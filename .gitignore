@@ -209,3 +209,5 @@ credentials.json
 token.json
 scheduler.db
 venv/
+
+.streamlit/secrets.toml
