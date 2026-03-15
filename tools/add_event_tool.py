@@ -20,8 +20,14 @@ def add_event_tool(title: str, date: str, start_time: str, end_time: str):
     try:
 
         # Validate inputs
-        if not title or not date or not start_time or not end_time:
-            return "⚠️ Missing event details."
+        if not title:
+            return "⚠️ Event title is required."
+
+        if not date:
+            return "⚠️ Event date is required."
+
+        if not start_time or not end_time:
+            return "⚠️ Start and end time are required."
 
         # Clean title
         title = title.strip()

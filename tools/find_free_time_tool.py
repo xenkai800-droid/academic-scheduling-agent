@@ -1,82 +1,55 @@
 import datetime
 import pytz
+
 from core.calendar_service import list_upcoming_events
+from core.date_parser import normalize_date_input
+from db.database import get_events_by_date
 
 TIMEZONE = "Asia/Kolkata"
+
 WORK_START = "09:00"
 WORK_END = "17:00"
 
-PERIODS = {
-    "morning": ("06:00", "12:00"),
-    "afternoon": ("12:00", "17:00"),
-    "evening": ("17:00", "21:00"),
-}
-
-WEEKDAYS = {
-    "monday": 0,
-    "tuesday": 1,
-    "wednesday": 2,
-    "thursday": 3,
-    "friday": 4,
-    "saturday": 5,
-    "sunday": 6,
-}
+MIN_SLOT_MINUTES = 15
 
 
-def find_free_time(
-    days: int = 1, period: str = None, date: str = None, weekday: str = None
-):
+def merge_intervals(intervals):
+
+    if not intervals:
+        return []
+
+    intervals.sort()
+
+    merged = [intervals[0]]
+
+    for current in intervals[1:]:
+
+        last_start, last_end = merged[-1]
+        curr_start, curr_end = current
+
+        if curr_start <= last_end:
+            merged[-1] = (last_start, max(last_end, curr_end))
+        else:
+            merged.append(current)
+
+    return merged
+
+
+def find_free_time(days: int = 1, date: str = None):
 
     ist = pytz.timezone(TIMEZONE)
 
     today = datetime.datetime.now(ist).date()
 
-    # -----------------------------------
-    # NORMALIZE NATURAL LANGUAGE DATES
-    # -----------------------------------
-
-    if date == "today":
-        date = today.isoformat()
-
-    elif date == "tomorrow":
-        date = (today + datetime.timedelta(days=1)).isoformat()
-
-    # Fix LLM wrong-year guesses
-    elif date:
-        try:
-            parsed = datetime.datetime.strptime(date, "%Y-%m-%d").date()
-
-            if parsed.year < today.year:
-                parsed = parsed.replace(year=today.year)
-
-            date = parsed.isoformat()
-
-        except:
-            return "Invalid date format. Please use YYYY-MM-DD."
-
-    # -----------------------------------
-    # DETERMINE TARGET DATE RANGE
-    # -----------------------------------
-
     if date:
-        start_day = datetime.datetime.strptime(date, "%Y-%m-%d").date()
+        parsed = normalize_date_input(date)
+        if not parsed:
+            return "Invalid date."
+        start_day = datetime.date.fromisoformat(parsed)
         end_day = start_day
-
-    elif weekday:
-        weekday = weekday.lower()
-
-        if weekday not in WEEKDAYS:
-            return "Invalid weekday."
-
-        target = WEEKDAYS[weekday]
-        days_ahead = (target - today.weekday()) % 7
-
-        start_day = today + datetime.timedelta(days=days_ahead)
-        end_day = start_day
-
     else:
-        start_day = today + datetime.timedelta(days=days)
-        end_day = start_day
+        start_day = today
+        end_day = today + datetime.timedelta(days=days - 1)
 
     events = list_upcoming_events()
 
@@ -86,78 +59,100 @@ def find_free_time(
 
     while current_day <= end_day:
 
-        day_events = []
+        intervals = []
 
+        # ------------------------------
+        # GOOGLE CALENDAR EVENTS
+        # ------------------------------
         for event in events:
 
-            if "dateTime" not in event["start"]:
+            start_info = event.get("start", {})
+            end_info = event.get("end", {})
+
+            if "dateTime" not in start_info:
                 continue
 
-            start = datetime.datetime.fromisoformat(
-                event["start"]["dateTime"].replace("Z", "+00:00")
-            ).astimezone(ist)
+            try:
 
-            end = datetime.datetime.fromisoformat(
-                event["end"]["dateTime"].replace("Z", "+00:00")
-            ).astimezone(ist)
+                start_dt = datetime.datetime.fromisoformat(
+                    start_info["dateTime"].replace("Z", "+00:00")
+                ).astimezone(ist)
 
-            if start.date() == current_day:
-                day_events.append((start.time(), end.time()))
+                end_dt = datetime.datetime.fromisoformat(
+                    end_info["dateTime"].replace("Z", "+00:00")
+                ).astimezone(ist)
 
-        day_events.sort()
+            except Exception:
+                continue
 
-        free = []
+            if start_dt.date() != current_day:
+                continue
+
+            intervals.append((start_dt.time(), end_dt.time()))
+
+        # ------------------------------
+        # LOCAL DATABASE EVENTS
+        # (fix for Google API delay)
+        # ------------------------------
+        local_events = get_events_by_date(current_day.isoformat())
+
+        for title, start_time, end_time in local_events:
+
+            try:
+
+                start_t = datetime.datetime.strptime(start_time, "%H:%M").time()
+                end_t = datetime.datetime.strptime(end_time, "%H:%M").time()
+
+                intervals.append((start_t, end_t))
+
+            except Exception:
+                continue
+
+        # ------------------------------
+        # MERGE OVERLAPPING EVENTS
+        # ------------------------------
+        merged = merge_intervals(intervals)
 
         day_start = datetime.datetime.strptime(WORK_START, "%H:%M").time()
         day_end = datetime.datetime.strptime(WORK_END, "%H:%M").time()
 
+        free_slots = []
+
         cursor = day_start
 
-        for s, e in day_events:
+        for start, end in merged:
 
-            if s > cursor:
-                free.append((cursor, s))
+            if start > cursor:
 
-            if e > cursor:
-                cursor = e
+                delta = datetime.datetime.combine(
+                    current_day, start
+                ) - datetime.datetime.combine(current_day, cursor)
+
+                if delta.total_seconds() >= MIN_SLOT_MINUTES * 60:
+                    free_slots.append((cursor, start))
+
+            if end > cursor:
+                cursor = end
 
         if cursor < day_end:
-            free.append((cursor, day_end))
 
-        # -----------------------------------
-        # FILTER BY PERIOD
-        # -----------------------------------
+            delta = datetime.datetime.combine(
+                current_day, day_end
+            ) - datetime.datetime.combine(current_day, cursor)
 
-        if period in PERIODS:
+            if delta.total_seconds() >= MIN_SLOT_MINUTES * 60:
+                free_slots.append((cursor, day_end))
 
-            p_start = datetime.datetime.strptime(PERIODS[period][0], "%H:%M").time()
-            p_end = datetime.datetime.strptime(PERIODS[period][1], "%H:%M").time()
+        formatted = []
 
-            filtered = []
+        for s, e in free_slots:
+            formatted.append(f"{s.strftime('%H:%M')} - {e.strftime('%H:%M')}")
 
-            for s, e in free:
-
-                start = max(s, p_start)
-                end = min(e, p_end)
-
-                if start < end:
-                    filtered.append((start, end))
-
-            free = filtered
-
-        formatted_slots = []
-
-        for s, e in free:
-            formatted_slots.append(f"{s.strftime('%H:%M')} - {e.strftime('%H:%M')}")
-
-        results[str(current_day)] = formatted_slots
+        results[str(current_day)] = formatted
 
         current_day += datetime.timedelta(days=1)
 
-    if not results:
-        return "No free time found."
-
-    message = "🕒 Your Free Time\n\n"
+    message = "🕒 Available Free Time\n\n"
 
     for date_key, slots in results.items():
 
@@ -172,7 +167,7 @@ def find_free_time(
             continue
 
         for slot in slots:
-            message += f"\n• {slot}\n"
+            message += f"• {slot}\n"
 
         message += "\n"
 

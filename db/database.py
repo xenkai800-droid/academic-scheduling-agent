@@ -83,7 +83,7 @@ def delete_local_event(event_id):
         print("Error deleting event:", e)
 
 
-def event_exists_locally(title, event_date):
+def event_exists_locally(title, event_date, start_time):
 
     try:
 
@@ -95,9 +95,10 @@ def event_exists_locally(title, event_date):
             SELECT 1 FROM events
             WHERE LOWER(title) = LOWER(?)
             AND event_date = ?
+            AND start_time = ?
             LIMIT 1
         """,
-            (title, event_date),
+            (title, event_date, start_time),
         )
 
         result = cursor.fetchone()

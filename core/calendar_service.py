@@ -12,49 +12,33 @@ SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "Asia/Kolkata"
 
 
-# --------------------------------------------------
-# AUTHENTICATION
-# --------------------------------------------------
-
-
 def authenticate_google_calendar():
 
-    try:
+    creds = None
 
-        creds = None
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-        # Load existing token
-        if os.path.exists("token.json"):
-            creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if not creds or not creds.valid:
 
-        # If no valid credentials
-        if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
 
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+        else:
 
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "credentials.json", SCOPES
-                )
+            flow = InstalledAppFlow.from_client_secrets_file(
+                "credentials.json",
+                SCOPES,
+            )
 
-                creds = flow.run_local_server(port=0)
+            creds = flow.run_local_server(port=0)
 
-            # Save token
-            with open("token.json", "w") as token:
-                token.write(creds.to_json())
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
 
-        service = build("calendar", "v3", credentials=creds)
+    service = build("calendar", "v3", credentials=creds)
 
-        return service
-
-    except Exception as e:
-        raise Exception(f"Google Calendar authentication failed: {str(e)}")
-
-
-# --------------------------------------------------
-# LIST UPCOMING EVENTS
-# --------------------------------------------------
+    return service
 
 
 def list_upcoming_events():
@@ -64,65 +48,61 @@ def list_upcoming_events():
         service = authenticate_google_calendar()
 
         ist = pytz.timezone(TIMEZONE)
-        now = datetime.datetime.now(ist).isoformat()
+
+        now = (datetime.datetime.now(ist) - datetime.timedelta(days=1)).isoformat()
 
         events_result = (
             service.events()
             .list(
                 calendarId="primary",
                 timeMin=now,
-                maxResults=20,
+                maxResults=100,
                 singleEvents=True,
                 orderBy="startTime",
             )
             .execute()
         )
 
-        return events_result.get("items", [])
+        events = events_result.get("items", [])
+
+        return events
 
     except Exception:
+
         return []
-
-
-# --------------------------------------------------
-# CREATE EVENT
-# --------------------------------------------------
 
 
 def create_event(title, date, start_time, end_time):
 
-    try:
+    service = authenticate_google_calendar()
 
-        service = authenticate_google_calendar()
+    ist = pytz.timezone(TIMEZONE)
 
-        event = {
-            "summary": title.strip(),
-            "start": {
-                "dateTime": f"{date}T{start_time}:00",
-                "timeZone": TIMEZONE,
-            },
-            "end": {
-                "dateTime": f"{date}T{end_time}:00",
-                "timeZone": TIMEZONE,
-            },
-        }
+    start_local = ist.localize(
+        datetime.datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
+    )
 
-        created_event = (
-            service.events().insert(calendarId="primary", body=event).execute()
-        )
+    end_local = ist.localize(
+        datetime.datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
+    )
 
-        return created_event
+    # convert to UTC
+    start_utc = start_local.astimezone(pytz.utc)
+    end_utc = end_local.astimezone(pytz.utc)
 
-    except Exception as e:
+    event = {
+        "summary": title.strip(),
+        "start": {
+            "dateTime": start_utc.isoformat(),
+        },
+        "end": {
+            "dateTime": end_utc.isoformat(),
+        },
+    }
 
-        print("GOOGLE CALENDAR ERROR:", e)
+    created_event = service.events().insert(calendarId="primary", body=event).execute()
 
-        raise Exception("Failed to create event in Google Calendar.")
-
-
-# --------------------------------------------------
-# DELETE EVENT
-# --------------------------------------------------
+    return created_event
 
 
 def delete_event(event_id):
@@ -131,17 +111,15 @@ def delete_event(event_id):
 
         service = authenticate_google_calendar()
 
-        service.events().delete(calendarId="primary", eventId=event_id).execute()
+        service.events().delete(
+            calendarId="primary",
+            eventId=event_id,
+        ).execute()
 
         return True
 
     except Exception:
         return False
-
-
-# --------------------------------------------------
-# CHECK DUPLICATE EVENT
-# --------------------------------------------------
 
 
 def event_exists_on_date(title, date):
@@ -152,9 +130,13 @@ def event_exists_on_date(title, date):
 
         ist = pytz.timezone(TIMEZONE)
 
-        start_dt = ist.localize(datetime.datetime.fromisoformat(date + "T00:00:00"))
+        start_dt = ist.localize(
+            datetime.datetime.strptime(f"{date} 00:00", "%Y-%m-%d %H:%M")
+        )
 
-        end_dt = ist.localize(datetime.datetime.fromisoformat(date + "T23:59:59"))
+        end_dt = ist.localize(
+            datetime.datetime.strptime(f"{date} 23:59", "%Y-%m-%d %H:%M")
+        )
 
         events_result = (
             service.events()
