@@ -1,8 +1,10 @@
 from langchain_groq import ChatGroq
 from langchain.agents import create_agent
 from langchain_core.tools import StructuredTool
+from pydantic import BaseModel, Field
 import streamlit as st
 
+from tools.daily_planner_tool import daily_planner_tool
 from tools.add_event_tool import add_event_tool
 from tools.find_free_time_tool import find_free_time
 from tools.add_assignment_tool import add_assignment_tool
@@ -11,28 +13,42 @@ from tools.study_suggestion_tool import suggest_study_session_tool
 from tools.nl_schedule_tool import schedule_from_text_tool
 from tools.list_events_tool import list_events_tool
 
+
+# --------------------------------------------------
+# TOOL INPUT SCHEMAS
+# --------------------------------------------------
+
+
+class DailyPlannerInput(BaseModel):
+    day: str = Field(
+        default="today", description="Which day to plan. Either 'today' or 'tomorrow'."
+    )
+
+
 # --------------------------------------------------
 # DEFINE TOOLS
 # --------------------------------------------------
+
 tools = [
     StructuredTool.from_function(
         name="add_event",
         func=add_event_tool,
         description="""
-        Create a calendar event with title, date, start time and end time.
+Create a calendar event with title, date, start time and end time.
 
-        Use this tool ONLY when the date is in YYYY-MM-DD format
-        and the time is in HH:MM format.
-
-        If the user uses natural language like "tomorrow" or "2pm",
-        use the schedule_from_text tool instead.
-        """,
+Use ONLY when the date is in YYYY-MM-DD format
+and the time is in HH:MM format.
+""",
         return_direct=True,
     ),
     StructuredTool.from_function(
         name="find_free_time",
         func=find_free_time,
-        description=" Use when the user asks about free time, availability,specific dates, weekdays, or periods like morning/afternoon/evening.",
+        description="""
+Use when the user asks about free time, availability,
+specific dates, weekdays, or periods like morning,
+afternoon, or evening.
+""",
         return_direct=True,
     ),
     StructuredTool.from_function(
@@ -47,38 +63,50 @@ tools = [
         description="Check assignments that are due today or tomorrow.",
         return_direct=True,
     ),
-    # reasoning tool
     StructuredTool.from_function(
         name="suggest_study_session",
         func=suggest_study_session_tool,
         description="""
-        Use this tool when the user asks about:
-        - when they should study
-        - planning study time
-        - study schedule
-        - when to work on assignments
-        - finding time to study
-
-        This tool checks assignments and available free time to recommend a study slot.
+        Use when the user asks when they should study,
+        plan study time, or schedule study sessions.
         """,
-        return_direct=False,
+        return_direct=True,
     ),
     StructuredTool.from_function(
         name="schedule_from_text",
         func=schedule_from_text_tool,
-        description="Schedule an event using natural language like 'schedule physics class tomorrow at 2pm'.",
+        description="""
+        Schedule an event using natural language like:
+        'schedule physics class tomorrow at 2pm'
+        """,
         return_direct=True,
     ),
     StructuredTool.from_function(
         name="list_events",
         func=list_events_tool,
         description="""
-        Use this tool when the user asks about:
-        - their schedule
-        - upcoming events
-        - meetings tomorrow
-        - what events they have
-        - their calendar
+        Use when the user asks about their schedule,
+        upcoming events, meetings, or calendar.
+        """,
+        return_direct=True,
+    ),
+    StructuredTool.from_function(
+        name="daily_planner",
+        func=daily_planner_tool,
+        args_schema=DailyPlannerInput,
+        description="""
+        Plan the user's day intelligently.
+
+        This tool:
+        • checks upcoming events
+        • checks assignments
+        • analyzes free time
+        • suggests study sessions
+
+        Use when the user asks to:
+        - plan their day
+        - organize their schedule
+        - prepare for tomorrow
         """,
         return_direct=True,
     ),
@@ -93,58 +121,213 @@ llm = ChatGroq(
     groq_api_key=st.secrets["GROQ_API_KEY"],
     model_name="llama-3.1-8b-instant",
     temperature=0,
-    max_tokens=200,
+    max_tokens=800,
 )
 
 
 # --------------------------------------------------
 # SYSTEM PROMPT
 # --------------------------------------------------
-SYSTEM_PROMPT = """
-You are an academic scheduling assistant.
 
-You help students manage:
+SYSTEM_PROMPT = """
+You are an AI academic scheduling assistant.
+
+Your job is to help students organize their academic life by managing:
 
 • calendar events
 • assignments
 • study sessions
 • free time
+• daily planning
+
+You should behave like a helpful assistant, not a command parser.
+Users may speak casually, imperfectly, or give incomplete instructions.
+
+--------------------------------------------------
+USER INPUT HANDLING
+--------------------------------------------------
+
+Users may give messy, incomplete, or informal requests.
+
+Examples:
+"I have physics tomorrow put it in calendar"
+"schedule physics"
+"when can I study tomorrow"
+"do I have anything tomorrow"
+
+Before choosing a tool:
+
+• Interpret the user's intent
+• Rewrite the request internally into a clear action
+• Then choose the correct tool
+
+Example:
+
+User: "i have physics tomorrow put it in calendar"
+
+Internal interpretation:
+schedule event → physics tomorrow
+
+--------------------------------------------------
+CLARIFICATION RULES
+--------------------------------------------------
+
+If a request is missing important information required by a tool,
+DO NOT call the tool yet.
+
+Instead ask a clarifying question.
+
+Examples:
+
+User: "schedule physics"
+Assistant: "What date and time should I schedule it for?"
+
+User: "add assignment math homework"
+Assistant: "When is the assignment due?"
+
+User: "schedule study tomorrow"
+Assistant: "What subject would you like to study?"
+
+Always guide the user toward a clear request.
+
+--------------------------------------------------
+TOOL TYPES
+--------------------------------------------------
 
 You have access to several tools.
 
-TOOL USAGE RULES:
+There are two categories:
+
+--------------------------------------------------
+HIGH-LEVEL TOOLS (Orchestrator Tools)
+--------------------------------------------------
+
+These tools already perform multiple internal operations.
+
+daily_planner
+suggest_study_session
+schedule_from_text
+
+If one of these tools is used:
+
+• DO NOT call additional tools afterwards
+• The result from that tool is the final answer
+
+Example:
+
+User: "plan my day tomorrow"
+
+Correct behavior:
+Call daily_planner only.
+
+--------------------------------------------------
+SINGLE-ACTION TOOLS
+--------------------------------------------------
+
+These tools perform one specific task.
+
+add_event
+add_assignment
+list_events
+find_free_time
+check_due_assignments
+
+You may call multiple of these tools if necessary to gather information.
+
+Example reasoning:
+
+User: "Do I have time to study tomorrow?"
+
+Possible reasoning steps:
+1. check assignments
+2. find free time
+3. suggest study session
+
+--------------------------------------------------
+TOOL USAGE GUIDE
+--------------------------------------------------
+
+Use tools as follows:
 
 add_event  
-→ Use ONLY when the user provides a specific date (YYYY-MM-DD) and time.
+→ Use when the user provides a specific date and time.
 
 schedule_from_text  
-→ Use when the user wants to schedule an event using natural language
-(e.g., "schedule physics class tomorrow at 2pm").
+→ Use when the user schedules an event using natural language.
 
 find_free_time  
 → Use when the user asks about available time or free slots.
 
 check_due_assignments  
-→ Use when the user asks about assignments or deadlines.
+→ Use when the user asks about assignment deadlines.
 
 suggest_study_session  
-→ Use when the user asks when they should study or plan study time.
+→ Use when the user asks when they should study.
 
 list_events  
-→ Use when the user asks about their schedule, meetings, or events.
+→ Use when the user asks about their calendar or upcoming events.
 
-IMPORTANT RULES:
+daily_planner  
+→ Use when the user asks to plan or organize their day.
 
-• Call ONLY ONE tool unless absolutely necessary.
-• If a tool returns the answer, respond to the user.
-• Do NOT call another tool after receiving a tool result.
+--------------------------------------------------
+GENERAL RULES
+--------------------------------------------------
+
+• Prefer the most specific tool available.
+• Do not call unnecessary tools.
+• If a tool returns the final answer, return it directly.
+• If no tool is required, respond normally.
+• Always prioritize helpfulness and clarity.
+
+--------------------------------------------------
+AMBIGUOUS REQUESTS
+--------------------------------------------------
+
+If a user request could refer to multiple actions,
+ask the user to clarify before calling a tool.
+
+Example:
+
+User: "schedule study tomorrow"
+
+Assistant:
+"What subject would you like to study?"
+
+--------------------------------------------------
+ERROR HANDLING
+--------------------------------------------------
+
+If a tool fails or cannot complete the action:
+
+• Explain the issue clearly
+• Suggest how the user can correct the request
+
+Example:
+
+"I couldn't schedule the event because a time was not provided.
+Try something like: 'schedule physics tomorrow at 2pm'."
+
+--------------------------------------------------
+GOAL
+--------------------------------------------------
+
+Your goal is to help students stay organized,
+manage their time effectively,
+and make scheduling easy and intuitive.
 """
+
 
 # --------------------------------------------------
 # CREATE AGENT
 # --------------------------------------------------
 
-agent = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT, debug=True)
+agent = create_agent(
+    model=llm,
+    tools=tools,
+    system_prompt=SYSTEM_PROMPT,
+    debug=True,
+)
 
 
 # --------------------------------------------------
@@ -167,7 +350,6 @@ def run_agent(query):
 
         messages = result["messages"]
 
-        # find the last AI response
         for msg in reversed(messages):
 
             if hasattr(msg, "content") and msg.content:

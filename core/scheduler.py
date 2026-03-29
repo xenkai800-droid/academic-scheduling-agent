@@ -1,9 +1,13 @@
 from core.calendar_service import create_event
 from core.conflict_detector import has_conflict
 from db.database import save_event
-
+import datetime
+from tools.find_free_time_tool import find_free_time
 
 def schedule_event(title, date, start_time, end_time):
+
+    start = datetime.datetime.strptime(start_time, "%H:%M").time()
+    end = datetime.datetime.strptime(end_time, "%H:%M").time()
 
     try:
 
@@ -27,9 +31,14 @@ def schedule_event(title, date, start_time, end_time):
         conflict, event_name = has_conflict(date, start_time, end_time)
 
         if conflict:
+            suggestion = find_free_time(date=date)
             return (
-                "⚠️ Scheduling conflict detected.\n\n"
-                f"This overlaps with:\n{event_name}"
+
+                "⚠️ Scheduling Conflict Detected\n\n"
+                f"📌 Overlaps with: {event_name.title()}\n\n"
+                "💡 Suggested Free Slots:\n\n"
+                f"{suggestion}\n"
+
             )
 
         # ------------------------------

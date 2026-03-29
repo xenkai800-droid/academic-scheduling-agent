@@ -23,11 +23,11 @@ def authenticate_google_calendar():
 
         creds = None
 
-        # Load existing token
+        # Load saved token
         if os.path.exists("token.json"):
             creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-        # If no valid credentials
+        # Refresh or create new token
         if not creds or not creds.valid:
 
             if creds and creds.expired and creds.refresh_token:
@@ -49,7 +49,10 @@ def authenticate_google_calendar():
         return service
 
     except Exception as e:
-        raise Exception(f"Google Calendar authentication failed: {str(e)}")
+
+        print("GOOGLE AUTH ERROR:", e)
+
+        raise Exception("Google Calendar authentication failed.")
 
 
 # --------------------------------------------------
@@ -64,23 +67,35 @@ def list_upcoming_events():
         service = authenticate_google_calendar()
 
         ist = pytz.timezone(TIMEZONE)
-        now = datetime.datetime.now(ist).isoformat()
+
+        # look back one day so today's events aren't missed
+        now = (datetime.datetime.now(ist) - datetime.timedelta(days=1)).isoformat()
 
         events_result = (
             service.events()
             .list(
                 calendarId="primary",
                 timeMin=now,
-                maxResults=20,
+                maxResults=100,
                 singleEvents=True,
                 orderBy="startTime",
             )
             .execute()
         )
 
-        return events_result.get("items", [])
+        events = events_result.get("items", [])
 
-    except Exception:
+        print("DEBUG: EVENTS FROM GOOGLE:", len(events))
+
+        for e in events:
+            print("EVENT:", e.get("summary"), e.get("start"))
+
+        return events
+
+    except Exception as e:
+
+        print("LIST EVENTS ERROR:", e)
+
         return []
 
 
@@ -95,27 +110,45 @@ def create_event(title, date, start_time, end_time):
 
         service = authenticate_google_calendar()
 
+        ist = pytz.timezone(TIMEZONE)
+
+        start_dt = ist.localize(
+            datetime.datetime.strptime(f"{date} {start_time}", "%Y-%m-%d %H:%M")
+        )
+
+        end_dt = ist.localize(
+            datetime.datetime.strptime(f"{date} {end_time}", "%Y-%m-%d %H:%M")
+        )
+
         event = {
             "summary": title.strip(),
             "start": {
-                "dateTime": f"{date}T{start_time}:00",
+                "dateTime": start_dt.isoformat(),
                 "timeZone": TIMEZONE,
             },
             "end": {
-                "dateTime": f"{date}T{end_time}:00",
+                "dateTime": end_dt.isoformat(),
                 "timeZone": TIMEZONE,
             },
         }
 
         created_event = (
-            service.events().insert(calendarId="primary", body=event).execute()
+            service.events()
+            .insert(
+                calendarId="primary",
+                body=event,
+            )
+            .execute()
         )
+
+        print("DEBUG: EVENT CREATED:", created_event.get("summary"))
+        print("DEBUG: EVENT ID:", created_event.get("id"))
 
         return created_event
 
     except Exception as e:
 
-        print("GOOGLE CALENDAR ERROR:", e)
+        print("GOOGLE CREATE EVENT ERROR:", e)
 
         raise Exception("Failed to create event in Google Calendar.")
 
@@ -131,11 +164,19 @@ def delete_event(event_id):
 
         service = authenticate_google_calendar()
 
-        service.events().delete(calendarId="primary", eventId=event_id).execute()
+        service.events().delete(
+            calendarId="primary",
+            eventId=event_id,
+        ).execute()
+
+        print("DEBUG: EVENT DELETED:", event_id)
 
         return True
 
-    except Exception:
+    except Exception as e:
+
+        print("DELETE EVENT ERROR:", e)
+
         return False
 
 
@@ -152,9 +193,13 @@ def event_exists_on_date(title, date):
 
         ist = pytz.timezone(TIMEZONE)
 
-        start_dt = ist.localize(datetime.datetime.fromisoformat(date + "T00:00:00"))
+        start_dt = ist.localize(
+            datetime.datetime.strptime(date + " 00:00", "%Y-%m-%d %H:%M")
+        )
 
-        end_dt = ist.localize(datetime.datetime.fromisoformat(date + "T23:59:59"))
+        end_dt = ist.localize(
+            datetime.datetime.strptime(date + " 23:59", "%Y-%m-%d %H:%M")
+        )
 
         events_result = (
             service.events()
@@ -176,5 +221,8 @@ def event_exists_on_date(title, date):
 
         return False
 
-    except Exception:
+    except Exception as e:
+
+        print("DUPLICATE CHECK ERROR:", e)
+
         return False

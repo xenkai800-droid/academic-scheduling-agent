@@ -1,6 +1,8 @@
 import datetime
 import pytz
+
 from core.calendar_service import list_upcoming_events
+from core.date_parser import parse_natural_date
 
 TIMEZONE = "Asia/Kolkata"
 WORK_START = "09:00"
@@ -23,46 +25,60 @@ WEEKDAYS = {
 }
 
 
+def normalize_date_input(date, today):
+
+    if not date:
+        return None
+
+    date = date.lower()
+
+    if date == "today":
+        return today
+
+    if date == "tomorrow":
+        return today + datetime.timedelta(days=1)
+
+    # try natural language parser
+    parsed = parse_natural_date(date)
+
+    if parsed:
+        return datetime.date.fromisoformat(parsed)
+
+    try:
+        parsed = datetime.datetime.strptime(date, "%Y-%m-%d").date()
+
+        if parsed.year < today.year:
+            parsed = parsed.replace(year=today.year)
+
+        return parsed
+
+    except Exception:
+        return None
+
+
 def find_free_time(
-    days: int = 1, period: str = None, date: str = None, weekday: str = None
+    days: int = 1,
+    period: str = None,
+    date: str = None,
+    weekday: str = None,
 ):
 
     ist = pytz.timezone(TIMEZONE)
-
     today = datetime.datetime.now(ist).date()
 
     # -----------------------------------
-    # NORMALIZE NATURAL LANGUAGE DATES
+    # DATE HANDLING
     # -----------------------------------
 
-    if date == "today":
-        date = today.isoformat()
+    parsed_date = normalize_date_input(date, today)
 
-    elif date == "tomorrow":
-        date = (today + datetime.timedelta(days=1)).isoformat()
+    if parsed_date:
 
-    # Fix LLM wrong-year guesses
-    elif date:
-        try:
-            parsed = datetime.datetime.strptime(date, "%Y-%m-%d").date()
-
-            if parsed.year < today.year:
-                parsed = parsed.replace(year=today.year)
-
-            date = parsed.isoformat()
-
-        except:
-            return "Invalid date format. Please use YYYY-MM-DD."
-
-    # -----------------------------------
-    # DETERMINE TARGET DATE RANGE
-    # -----------------------------------
-
-    if date:
-        start_day = datetime.datetime.strptime(date, "%Y-%m-%d").date()
-        end_day = start_day
+        start_day = parsed_date
+        end_day = parsed_date
 
     elif weekday:
+
         weekday = weekday.lower()
 
         if weekday not in WEEKDAYS:
@@ -75,8 +91,13 @@ def find_free_time(
         end_day = start_day
 
     else:
-        start_day = today + datetime.timedelta(days=days)
-        end_day = start_day
+
+        start_day = today
+        end_day = today + datetime.timedelta(days=days - 1)
+
+    # -----------------------------------
+    # FETCH EVENTS
+    # -----------------------------------
 
     events = list_upcoming_events()
 
@@ -90,16 +111,25 @@ def find_free_time(
 
         for event in events:
 
-            if "dateTime" not in event["start"]:
+            start_info = event.get("start", {})
+            end_info = event.get("end", {})
+
+            # skip all-day events
+            if "dateTime" not in start_info:
                 continue
 
-            start = datetime.datetime.fromisoformat(
-                event["start"]["dateTime"].replace("Z", "+00:00")
-            ).astimezone(ist)
+            try:
 
-            end = datetime.datetime.fromisoformat(
-                event["end"]["dateTime"].replace("Z", "+00:00")
-            ).astimezone(ist)
+                start = datetime.datetime.fromisoformat(
+                    start_info["dateTime"].replace("Z", "+00:00")
+                ).astimezone(ist)
+
+                end = datetime.datetime.fromisoformat(
+                    end_info["dateTime"].replace("Z", "+00:00")
+                ).astimezone(ist)
+
+            except Exception:
+                continue
 
             if start.date() == current_day:
                 day_events.append((start.time(), end.time()))
@@ -125,7 +155,7 @@ def find_free_time(
             free.append((cursor, day_end))
 
         # -----------------------------------
-        # FILTER BY PERIOD
+        # PERIOD FILTER
         # -----------------------------------
 
         if period in PERIODS:
@@ -157,6 +187,10 @@ def find_free_time(
     if not results:
         return "No free time found."
 
+    # -----------------------------------
+    # FORMAT RESPONSE
+    # -----------------------------------
+
     message = "🕒 Your Free Time\n\n"
 
     for date_key, slots in results.items():
@@ -172,7 +206,7 @@ def find_free_time(
             continue
 
         for slot in slots:
-            message += f"\n• {slot}\n"
+            message += f"• {slot}\n"
 
         message += "\n"
 

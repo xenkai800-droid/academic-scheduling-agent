@@ -422,7 +422,7 @@ elif page == "AI Assistant":
                     response = run_agent(user_query)
 
                     st.success("Assistant Response:")
-                    st.write(response)
+                    st.markdown(f"```\n{response}\n```")
 
                 except Exception as e:
                     st.error(f"Agent error: {e}")
