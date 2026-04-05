@@ -30,6 +30,7 @@ def initialize_database():
                 title TEXT NOT NULL,
                 subject TEXT,
                 due_date TEXT NOT NULL,
+                priority TEXT DEFAULT 'medium',
                 status TEXT DEFAULT 'pending',
                 reminder_sent INTEGER DEFAULT 0,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP

@@ -1,6 +1,7 @@
 from core.nlp_parser import parse_event_request
 from core.date_parser import parse_natural_date
 from tools.add_event_tool import add_event_tool
+from tools.find_free_time_tool import find_free_time
 import datetime
 
 
@@ -120,12 +121,30 @@ def schedule_from_text_tool(query: str):
         # CREATE EVENT
         # -------------------------
 
-        return add_event_tool(
+        result = add_event_tool(
             title,
             date,
             start_time,
             end_time,
         )
+
+        # -------------------------
+        # EXAM STUDY SUGGESTION
+        # -------------------------
+
+        if "exam" in title.lower():
+
+            try:
+
+                suggestion = find_free_time(date=date)
+
+                result += "\n\n📚 Study Recommendation:\n"
+                result += suggestion
+
+            except Exception:
+                pass
+
+        return result
 
     except Exception as e:
 

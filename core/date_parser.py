@@ -1,29 +1,50 @@
 import dateparser
 import pytz
+import re
 
 TIMEZONE = "Asia/Kolkata"
+
+
+def extract_date_phrase(text: str):
+    """
+    Extract likely date-related portion from full sentence.
+    """
+
+    text = text.lower()
+
+    # Match patterns like:
+    # "15 august", "august 15", "11th march"
+    match = re.search(
+        r"\b(\d{1,2}(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december))\b",
+        text,
+    )
+
+    if not match:
+        match = re.search(
+            r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b",
+            text,
+        )
+
+    if match:
+        return match.group(0)
+
+    # fallback: return full text (for "tomorrow", "next monday", etc.)
+    return text
 
 
 def parse_natural_date(text: str):
     """
     Convert natural language dates into YYYY-MM-DD format.
-
-    Supported examples:
-    - march 11
-    - 11 march
-    - 11th march
-    - 12/10/2026
-    - tomorrow
-    - next monday
-    - this sunday
-    - in 3 days
     """
 
     if not text:
         return None
 
+    # 🔥 Extract clean date phrase first
+    date_text = extract_date_phrase(text)
+
     parsed = dateparser.parse(
-        text,
+        date_text,
         settings={
             "PREFER_DATES_FROM": "future",
             "TIMEZONE": TIMEZONE,

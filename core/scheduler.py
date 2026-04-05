@@ -4,10 +4,18 @@ from db.database import save_event
 import datetime
 from tools.find_free_time_tool import find_free_time
 
-def schedule_event(title, date, start_time, end_time):
+# ------------------------------
+# ACADEMIC CALENDAR (HOLIDAYS)
+# ------------------------------
 
-    start = datetime.datetime.strptime(start_time, "%H:%M").time()
-    end = datetime.datetime.strptime(end_time, "%H:%M").time()
+HOLIDAYS = [
+    "2026-01-26",  # Republic Day
+    "2026-08-15",  # Independence Day
+    "2026-10-02",  # Gandhi Jayanti
+]
+
+
+def schedule_event(title, date, start_time, end_time):
 
     try:
 
@@ -25,6 +33,18 @@ def schedule_event(title, date, start_time, end_time):
             return "Error: End time must be after start time."
 
         # ------------------------------
+        # HOLIDAY CHECK (DEMO FRIENDLY)
+        # ------------------------------
+
+        if date in HOLIDAYS:
+            return (
+                "⚠️ Scheduling Conflict Detected\n\n"
+                "📌 Reason: Academic Holiday\n\n"
+                "💡 Suggested Free Slots:\n\n"
+                "No scheduling allowed on holidays.\n"
+            )
+
+        # ------------------------------
         # CHECK CONFLICT
         # ------------------------------
 
@@ -33,12 +53,10 @@ def schedule_event(title, date, start_time, end_time):
         if conflict:
             suggestion = find_free_time(date=date)
             return (
-
                 "⚠️ Scheduling Conflict Detected\n\n"
                 f"📌 Overlaps with: {event_name.title()}\n\n"
                 "💡 Suggested Free Slots:\n\n"
                 f"{suggestion}\n"
-
             )
 
         # ------------------------------

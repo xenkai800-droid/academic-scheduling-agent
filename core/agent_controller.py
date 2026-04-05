@@ -34,21 +34,26 @@ tools = [
         name="add_event",
         func=add_event_tool,
         description="""
-Create a calendar event with title, date, start time and end time.
+        ⚠️ INTERNAL TOOL - DO NOT USE FOR NORMAL USER REQUESTS
 
-Use ONLY when the date is in YYYY-MM-DD format
-and the time is in HH:MM format.
-""",
+        This tool should ONLY be used when all details are explicitly structured.
+
+        For natural language scheduling (e.g. "schedule physics tomorrow"),
+        ALWAYS use schedule_from_text instead.
+
+        Using this tool directly may bypass validation, conflict detection,
+        and holiday rules.
+        """,
         return_direct=True,
     ),
     StructuredTool.from_function(
         name="find_free_time",
         func=find_free_time,
         description="""
-Use when the user asks about free time, availability,
-specific dates, weekdays, or periods like morning,
-afternoon, or evening.
-""",
+        Use when the user asks about free time, availability,
+        specific dates, weekdays, or periods like morning,
+        afternoon, or evening.
+        """,
         return_direct=True,
     ),
     StructuredTool.from_function(
@@ -76,8 +81,19 @@ afternoon, or evening.
         name="schedule_from_text",
         func=schedule_from_text_tool,
         description="""
-        Schedule an event using natural language like:
-        'schedule physics class tomorrow at 2pm'
+        PRIMARY scheduling tool.
+
+        Use this for ALL scheduling requests written in natural language.
+
+        Handles:
+        - date parsing
+        - time parsing
+        - conflict detection
+        - holiday validation
+        - study recommendations
+
+        Example:
+        "schedule physics tomorrow at 2pm"
         """,
         return_direct=True,
     ),
@@ -213,13 +229,6 @@ If one of these tools is used:
 • DO NOT call additional tools afterwards
 • The result from that tool is the final answer
 
-Example:
-
-User: "plan my day tomorrow"
-
-Correct behavior:
-Call daily_planner only.
-
 --------------------------------------------------
 SINGLE-ACTION TOOLS
 --------------------------------------------------
@@ -232,28 +241,15 @@ list_events
 find_free_time
 check_due_assignments
 
-You may call multiple of these tools if necessary to gather information.
-
-Example reasoning:
-
-User: "Do I have time to study tomorrow?"
-
-Possible reasoning steps:
-1. check assignments
-2. find free time
-3. suggest study session
-
 --------------------------------------------------
 TOOL USAGE GUIDE
 --------------------------------------------------
 
-Use tools as follows:
-
 add_event  
-→ Use when the user provides a specific date and time.
+→ INTERNAL TOOL. DO NOT USE for user requests.
 
 schedule_from_text  
-→ Use when the user schedules an event using natural language.
+→ ALWAYS use this for ANY scheduling request, including specific dates like "15 August".
 
 find_free_time  
 → Use when the user asks about available time or free slots.
@@ -279,34 +275,6 @@ GENERAL RULES
 • If a tool returns the final answer, return it directly.
 • If no tool is required, respond normally.
 • Always prioritize helpfulness and clarity.
-
---------------------------------------------------
-AMBIGUOUS REQUESTS
---------------------------------------------------
-
-If a user request could refer to multiple actions,
-ask the user to clarify before calling a tool.
-
-Example:
-
-User: "schedule study tomorrow"
-
-Assistant:
-"What subject would you like to study?"
-
---------------------------------------------------
-ERROR HANDLING
---------------------------------------------------
-
-If a tool fails or cannot complete the action:
-
-• Explain the issue clearly
-• Suggest how the user can correct the request
-
-Example:
-
-"I couldn't schedule the event because a time was not provided.
-Try something like: 'schedule physics tomorrow at 2pm'."
 
 --------------------------------------------------
 GOAL

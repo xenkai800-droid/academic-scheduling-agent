@@ -5,18 +5,18 @@ from core.date_parser import parse_natural_date
 
 def parse_event_request(text):
 
-    text = text.lower()
+    original_text = text
+    text = text.lower().strip()
 
     today = datetime.date.today()
 
     # --------------------------------
-    # DATE DETECTION (NATURAL LANGUAGE)
+    # DATE DETECTION
     # --------------------------------
 
     natural_date = parse_natural_date(text)
 
     if natural_date:
-
         date = datetime.date.fromisoformat(natural_date)
 
     else:
@@ -47,11 +47,8 @@ def parse_event_request(text):
                     break
 
             if found_day is not None:
-
                 today_weekday = today.weekday()
-
                 days_ahead = (found_day - today_weekday) % 7
-
                 date = today + datetime.timedelta(days=days_ahead)
 
             else:
@@ -82,59 +79,78 @@ def parse_event_request(text):
     start_time = f"{hour:02d}:{minute:02d}"
 
     # --------------------------------
-    # AUTO END TIME (1 hour event)
+    # AUTO END TIME (1 hour)
     # --------------------------------
 
     if hour == 23:
-        end_hour = 23
-        end_minute = 59
+        end_time = "23:59"
     else:
         end_hour = hour + 1
-        end_minute = minute
-
-    end_time = f"{end_hour:02d}:{end_minute:02d}"
+        end_time = f"{end_hour:02d}:{minute:02d}"
 
     # --------------------------------
-    # CLEAN TITLE
+    # TITLE EXTRACTION (ROBUST)
     # --------------------------------
 
     cleaned = text
 
-    keywords = [
-        "schedule",
-        "add",
-        "create",
-        "meeting",
-        "event",
-        "class",
-    ]
+    # remove command words
+    command_words = ["schedule", "add", "create", "set", "plan"]
 
-    for word in keywords:
-        cleaned = cleaned.replace(word, "")
+    for word in command_words:
+        cleaned = re.sub(rf"\b{word}\b", "", cleaned)
 
-    for word in ["today", "tomorrow"]:
-        cleaned = cleaned.replace(word, "")
+    # remove date keywords
+    cleaned = re.sub(r"\b(today|tomorrow)\b", "", cleaned)
 
-    for day in [
-        "monday",
-        "tuesday",
-        "wednesday",
-        "thursday",
-        "friday",
-        "saturday",
-        "sunday",
-    ]:
-        cleaned = cleaned.replace(day, "")
+    # remove weekdays
+    cleaned = re.sub(
+        r"\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        "",
+        cleaned,
+    )
 
-    # remove time expressions
-    cleaned = re.sub(r"\d{1,2}(?::\d{2})?\s*(am|pm)?", "", cleaned)
+    # remove time expressions ONLY (safe)
+    cleaned = re.sub(
+        r"\b\d{1,2}(:\d{2})?\s*(am|pm)\b",
+        "",
+        cleaned,
+    )
 
-    cleaned = cleaned.replace("at", "")
+    # remove connectors
+    cleaned = re.sub(r"\b(at|on|for|to)\b", "", cleaned)
 
-    title = cleaned.strip().title()
+    # remove months
+    cleaned = re.sub(
+        r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\b",
+        "",
+        cleaned,
+    )
 
-    if not title:
-        title = "Event"
+    # clean spaces
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    # fallback
+    if not cleaned:
+        cleaned = "event"
+
+    title = cleaned.title()
+
+    # --------------------------------
+    # COURSE TYPE DETECTION (SAFE)
+    # --------------------------------
+
+    if "exam" in text and "exam" not in title.lower():
+        title += " Exam"
+
+    elif "lab" in text and "lab" not in title.lower():
+        title += " Lab"
+
+    elif "lecture" in text and "lecture" not in title.lower():
+        title += " Lecture"
+
+    elif "tutorial" in text and "tutorial" not in title.lower():
+        title += " Tutorial"
 
     return {
         "title": title,
