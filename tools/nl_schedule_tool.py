@@ -6,20 +6,10 @@ import datetime
 
 
 def normalize_date(date_str: str):
-    """
-    Convert natural language date to ISO format.
-    Supports:
-    - tomorrow
-    - march 11
-    - 11 march
-    - 12/10/2026
-    - next monday
-    """
 
     if not date_str:
         return None
 
-    # try natural language parser first
     parsed = parse_natural_date(date_str)
 
     if parsed:
@@ -29,9 +19,6 @@ def normalize_date(date_str: str):
 
 
 def normalize_time(time_str: str):
-    """
-    Convert '2pm', '2:30pm', '14:00' to HH:MM format.
-    """
 
     if not time_str:
         return None
@@ -56,28 +43,16 @@ def normalize_time(time_str: str):
 
 
 def schedule_from_text_tool(query: str):
-    """
-    Schedule an event using natural language.
-
-    Examples:
-    - schedule physics class tomorrow at 2pm
-    - add meeting march 11 at 10am
-    - schedule exam 11th march at 9am
-    """
 
     try:
 
         if not query:
-            return "Error: No scheduling request provided."
+            return "❌ No scheduling request provided."
 
         parsed = parse_event_request(query)
 
         if not parsed:
-            return "Sorry, I couldn't understand the scheduling request."
-
-        # -------------------------
-        # REQUIRED FIELDS
-        # -------------------------
+            return "❌ I couldn't understand the scheduling request. Try rephrasing."
 
         title = parsed.get("title")
         date = parsed.get("date")
@@ -85,36 +60,37 @@ def schedule_from_text_tool(query: str):
         end_time = parsed.get("end_time")
 
         if not title:
-            return "Error: Event title missing."
+            return "❌ Missing event title."
 
         if not date:
-            return "Error: Event date missing."
+            return "❌ Missing event date."
 
         if not start_time:
-            return "Error: Event start time missing."
+            return "❌ Missing start time."
 
         # -------------------------
-        # NORMALIZE VALUES
+        # NORMALIZE
         # -------------------------
 
         date = normalize_date(date)
+
+        if not date:
+            return "❌ Invalid date."
 
         start_time = normalize_time(start_time)
         end_time = normalize_time(end_time)
 
         if not start_time:
-            return "Error: Invalid start time."
+            return "❌ Invalid start time."
 
         # -------------------------
-        # AUTO-GENERATE END TIME
+        # AUTO END TIME
         # -------------------------
 
         if not end_time:
 
             start_dt = datetime.datetime.strptime(start_time, "%H:%M")
-
             end_dt = start_dt + datetime.timedelta(hours=1)
-
             end_time = end_dt.strftime("%H:%M")
 
         # -------------------------
@@ -122,14 +98,28 @@ def schedule_from_text_tool(query: str):
         # -------------------------
 
         result = add_event_tool(
-            title,
+            title.strip(),
             date,
             start_time,
             end_time,
         )
 
         # -------------------------
-        # EXAM STUDY SUGGESTION
+        # CLEAN OUTPUT
+        # -------------------------
+
+        if "Error" in result or "⚠️" in result:
+            return result
+
+        clean_output = (
+            f"✅ Event Scheduled Successfully\n\n"
+            f"📌 {title.title()}\n"
+            f"📅 {date}\n"
+            f"🕒 {start_time} - {end_time}"
+        )
+
+        # -------------------------
+        # EXAM → STUDY SUGGESTION
         # -------------------------
 
         if "exam" in title.lower():
@@ -138,14 +128,14 @@ def schedule_from_text_tool(query: str):
 
                 suggestion = find_free_time(date=date)
 
-                result += "\n\n📚 Study Recommendation:\n"
-                result += suggestion
+                clean_output += "\n\n📚 Study Recommendation:\n\n"
+                clean_output += suggestion
 
             except Exception:
                 pass
 
-        return result
+        return clean_output
 
     except Exception as e:
 
-        return f"Error scheduling event: {str(e)}"
+        return f"❌ Error scheduling event: {str(e)}"

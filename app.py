@@ -22,7 +22,6 @@ from core.assignment_manager import (
 
 from db.database import initialize_database, delete_local_event
 
-
 # --------------------------------------------------
 # PAGE CONFIG
 # --------------------------------------------------
@@ -71,17 +70,6 @@ if reminders:
 st.divider()
 
 # --------------------------------------------------
-# SMART STUDY SUGGESTION
-# --------------------------------------------------
-
-# suggestion = suggest_study_session_tool()
-
-# if suggestion != "No urgent assignments requiring study time.":
-
-#    st.info("🧠 Smart Study Suggestion")
-#    st.write(suggestion)
-
-# --------------------------------------------------
 # SIDEBAR
 # --------------------------------------------------
 
@@ -104,7 +92,6 @@ page = st.sidebar.radio(
 )
 
 st.session_state["page_redirect"] = page
-
 
 # --------------------------------------------------
 # CREATE EVENT
@@ -143,24 +130,21 @@ if page == "Create Event":
                 st.error("❌ End time must be later than start time.")
 
             elif event_exists_on_date(title, date.isoformat()):
-                st.error("❌ An event with this name already exists on this date.")
+                st.error("❌ Event already exists on this date.")
 
             else:
 
-                with st.spinner("Creating event..."):
+                result = add_event_tool(
+                    title.strip(),
+                    date.isoformat(),
+                    start_time.strftime("%H:%M"),
+                    end_time.strftime("%H:%M"),
+                )
 
-                    result = add_event_tool(
-                        title.strip(),
-                        date.isoformat(),
-                        start_time.strftime("%H:%M"),
-                        end_time.strftime("%H:%M"),
-                    )
-
-                    if "❌" in result:
-                        st.error(result)
-                    else:
-                        st.success(result)
-
+                if "❌" in result:
+                    st.error(result)
+                else:
+                    st.success(result)
 
 # --------------------------------------------------
 # VIEW EVENTS
@@ -170,15 +154,12 @@ elif page == "View Upcoming Events":
 
     st.subheader("📌 Upcoming Events")
 
-    with st.spinner("Fetching events..."):
-        events = list_upcoming_events()
+    events = list_upcoming_events()
 
     if not events:
         st.info("No upcoming events found.")
 
     else:
-
-        st.success(f"Found {len(events)} upcoming events")
 
         IST = pytz.timezone("Asia/Kolkata")
 
@@ -186,61 +167,27 @@ elif page == "View Upcoming Events":
 
             start_data = event["start"]
 
-            try:
-
-                # ---------------------------
-                # Timed events
-                # ---------------------------
-                if "dateTime" in start_data:
-
-                    start_raw = start_data["dateTime"].replace("Z", "+00:00")
-
-                    start_dt = datetime.datetime.fromisoformat(start_raw)
-
-                    # convert to IST
-                    start_dt = start_dt.astimezone(IST)
-
-                    formatted_time = start_dt.strftime("%d %b %Y | %I:%M %p")
-
-                # ---------------------------
-                # All day events
-                # ---------------------------
-                elif "date" in start_data:
-
-                    start_dt = datetime.date.fromisoformat(start_data["date"])
-
-                    formatted_time = start_dt.strftime("%d %b %Y | All Day")
-
-                else:
-                    formatted_time = "Unknown time"
-
-            except:
-                formatted_time = "Invalid time format"
+            if "dateTime" in start_data:
+                dt = datetime.datetime.fromisoformat(start_data["dateTime"].replace("Z", "+00:00"))
+                dt = dt.astimezone(IST)
+                time_str = dt.strftime("%d %b %Y | %I:%M %p")
+            else:
+                dt = datetime.date.fromisoformat(start_data["date"])
+                time_str = dt.strftime("%d %b %Y | All Day")
 
             with st.container(border=True):
 
                 col1, col2 = st.columns([4, 1])
 
                 with col1:
-
-                    st.markdown(
-                        f"""
-                        **{event['summary']}**  
-                        🕒 {formatted_time}
-                        """
-                    )
+                    st.markdown(f"**{event['summary']}**  \n🕒 {time_str}")
 
                 with col2:
-
-                    if st.button("🗑", key=f"delete_{event['id']}"):
-
-                        with st.spinner("Deleting..."):
-
-                            delete_event(event["id"])
-                            delete_local_event(event["id"])
-
-                        st.success("✅ Event deleted successfully.")
+                    if st.button("🗑", key=event["id"]):
+                        delete_event(event["id"])
+                        delete_local_event(event["id"])
                         st.rerun()
+
 # --------------------------------------------------
 # FIND FREE TIME
 # --------------------------------------------------
@@ -249,31 +196,23 @@ elif page == "Find Free Time":
 
     st.subheader("🕒 Find Free Time")
 
-    col1, col2 = st.columns(2)
-
-    with col1:
-        start_date = st.date_input("Start Date")
-
-    with col2:
-        end_date = st.date_input("End Date")
+    start_date = st.date_input("Start Date")
+    end_date = st.date_input("End Date")
 
     if st.button("Find Free Slots"):
 
         results = find_free_time(start_date.isoformat(), end_date.isoformat())
 
         for day, slots in results.items():
-
-            st.markdown(f"### 📅 {day}")
-
+            st.markdown(f"### {day}")
             if not slots:
-                st.write("No free slots available")
+                st.write("No free slots")
             else:
                 for slot in slots:
                     st.write(f"• {slot}")
 
-
 # --------------------------------------------------
-# ASSIGNMENTS
+# ASSIGNMENTS (UPDATED)
 # --------------------------------------------------
 
 elif page == "Assignments":
@@ -293,10 +232,19 @@ elif page == "Assignments":
         with col3:
             due_date = st.date_input("Due Date")
 
+        # ✅ AUTO + MANUAL PRIORITY
+        priority = st.selectbox(
+            "Priority (Optional)",
+            ["auto", "low", "medium", "high"]
+        )
+
         if st.button("Add Assignment"):
 
             if not title.strip():
                 st.error("Assignment title cannot be empty")
+
+            elif due_date < datetime.date.today():
+                st.error("Due date cannot be in the past")
 
             else:
 
@@ -304,13 +252,12 @@ elif page == "Assignments":
                     title.strip(),
                     subject.strip(),
                     due_date.isoformat(),
+                    priority,
                 )
 
                 st.success(result)
 
     st.divider()
-
-    st.subheader("Assignments")
 
     assignments = get_assignments()
 
@@ -319,84 +266,22 @@ elif page == "Assignments":
 
     else:
 
-        today = datetime.date.today()
-        tomorrow = today + datetime.timedelta(days=1)
+        for aid, title, subject, due, status, priority in assignments:
 
-        past_due = []
-        due_today = []
-        due_tomorrow = []
-        upcoming = []
-        completed = []
+            with st.container(border=True):
 
-        for aid, title, subject, due, status in assignments:
+                col1, col2 = st.columns([4, 1])
 
-            due_date = datetime.date.fromisoformat(due)
+                with col1:
+                    st.markdown(
+                        f"**{title}**  \n📘 {subject}  \n🔥 {priority.upper()}  \n⏰ {due}"
+                    )
 
-            if status == "completed":
-                completed.append((aid, title, subject, due, status))
+                with col2:
 
-            elif due_date < today:
-                past_due.append((aid, title, subject, due, status))
-
-            elif due_date == today:
-                due_today.append((aid, title, subject, due, status))
-
-            elif due_date == tomorrow:
-                due_tomorrow.append((aid, title, subject, due, status))
-
-            else:
-                upcoming.append((aid, title, subject, due, status))
-
-        def render_section(title, items):
-
-            if not items:
-                return
-
-            st.markdown(f"### {title}")
-
-            for aid, title, subject, due, status in items:
-
-                with st.container(border=True):
-
-                    col1, col2 = st.columns([4, 1])
-
-                    with col1:
-
-                        st.markdown(
-                            f"""
-                            **{title}**  
-                            📘 {subject}  
-                            ⏰ Due: {due}
-                            """
-                        )
-
-                    with col2:
-
-                        if status == "pending":
-
-                            if st.button("✔", key=f"complete_{aid}"):
-
-                                mark_assignment_complete(aid)
-                                st.success("Assignment marked as completed")
-                                st.rerun()
-
-                            if st.button("📅", key=f"study_{aid}"):
-
-                                st.session_state["study_assignment"] = f"Study: {title}"
-                                st.session_state["page_redirect"] = "Create Event"
-
-                                st.success(
-                                    "Redirecting to Create Event to schedule study time..."
-                                )
-
-                                st.rerun()
-
-        render_section("⚠ Past Due", past_due)
-        render_section("⏰ Due Today", due_today)
-        render_section("⏳ Due Tomorrow", due_tomorrow)
-        render_section("📚 Upcoming", upcoming)
-        render_section("✅ Completed", completed)
-
+                    if st.button("✔", key=f"done_{aid}"):
+                        mark_assignment_complete(aid)
+                        st.rerun()
 
 # --------------------------------------------------
 # AI ASSISTANT
@@ -406,31 +291,33 @@ elif page == "AI Assistant":
 
     st.subheader("🤖 AI Scheduling Assistant")
 
-    st.write("Ask me anything about your schedule.")
+    query = st.text_input("Enter your request")
 
-    user_query = st.text_input("Enter your request")
+    if st.button("Run"):
 
-    if st.button("Run Assistant"):
-
-        if not user_query.strip():
-            st.error("Please enter a request.")
+        if not query.strip():
+            st.error("Enter a request")
         else:
+            response = run_agent(query)
 
-            with st.spinner("Thinking..."):
+            if not response:
+                st.error("No response generated.")
 
-                try:
-                    response = run_agent(user_query)
+            elif "Error" in response or "❌" in response:
+                st.error(response)
 
-                    st.success("Assistant Response:")
-                    st.markdown(f"```\n{response}\n```")
+            elif "⚠️" in response:
+                st.warning(response)
 
-                except Exception as e:
-                    st.error(f"Agent error: {e}")
+            elif "📚" in response:
+                st.info(response)
+
+            else:
+                st.success(response)
 
 # --------------------------------------------------
 # FOOTER
 # --------------------------------------------------
 
 st.divider()
-
-st.caption("Built using Streamlit • Google Calendar API • SQLite")
+st.caption("Built with Streamlit • Google Calendar • AI Scheduling")

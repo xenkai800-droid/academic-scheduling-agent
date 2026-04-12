@@ -301,8 +301,6 @@ agent = create_agent(
 # --------------------------------------------------
 # RUN AGENT
 # --------------------------------------------------
-
-
 def run_agent(query):
 
     try:
@@ -316,14 +314,33 @@ def run_agent(query):
             }
         )
 
-        messages = result["messages"]
+        messages = result.get("messages", [])
 
-        for msg in reversed(messages):
+        # ------------------------------
+        # 1. GET LAST TOOL OUTPUT (MOST RELIABLE)
+        # ------------------------------
+        tool_outputs = [
+            msg.content for msg in messages
+            if msg.__class__.__name__ == "ToolMessage" and msg.content
+        ]
 
-            if hasattr(msg, "content") and msg.content:
-                return msg.content
+        if tool_outputs:
+            return tool_outputs[-1].strip()
 
-        return "No response generated."
+        # ------------------------------
+        # 2. GET LAST AI RESPONSE
+        # ------------------------------
+        ai_outputs = [
+            msg.content for msg in messages
+            if msg.__class__.__name__ == "AIMessage"
+            and msg.content
+            and not msg.content.startswith("<")
+        ]
+
+        if ai_outputs:
+            return ai_outputs[-1].strip()
+
+        return "⚠️ No response generated."
 
     except Exception as e:
 

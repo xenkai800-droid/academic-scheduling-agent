@@ -2,9 +2,9 @@ from core.assignment_manager import add_assignment
 import datetime
 
 
-def add_assignment_tool(title: str, subject: str, due_date: str):
+def add_assignment_tool(title: str, subject: str, due_date: str, priority: str = "auto"):
     """
-    Add a new assignment.
+    Add a new assignment with optional priority.
 
     Parameters
     ----------
@@ -14,6 +14,8 @@ def add_assignment_tool(title: str, subject: str, due_date: str):
         Subject name
     due_date : str
         Due date in YYYY-MM-DD format
+    priority : str
+        Priority (low, medium, high, auto)
     """
 
     try:
@@ -54,10 +56,22 @@ def add_assignment_tool(title: str, subject: str, due_date: str):
             return "Invalid due date format. Please use YYYY-MM-DD."
 
         # -------------------------------
+        # NORMALIZE PRIORITY
+        # -------------------------------
+
+        if not priority:
+            priority = "auto"
+
+        priority = priority.lower()
+
+        if priority not in ["low", "medium", "high", "auto"]:
+            priority = "auto"
+
+        # -------------------------------
         # SAVE ASSIGNMENT
         # -------------------------------
 
-        result = add_assignment(title, subject, due_date)
+        result = add_assignment(title, subject, due_date, priority)
 
         return result
 

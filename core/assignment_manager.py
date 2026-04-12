@@ -3,9 +3,11 @@ import datetime
 from db.database import DB_NAME
 
 
-def add_assignment(title, subject, due_date):
+def add_assignment(title, subject, due_date, priority="auto"):
     """
-    Add a new assignment to the database.
+    Add a new assignment with hybrid priority:
+    - User-defined priority OR
+    - Auto-calculated based on urgency
     """
 
     try:
@@ -16,27 +18,56 @@ def add_assignment(title, subject, due_date):
         if not due_date:
             return "Error: Due date is required."
 
-        # Prevent past assignments
-        today = datetime.date.today().isoformat()
+        today = datetime.date.today()
 
-        if due_date < today:
+        # Convert due_date safely
+        try:
+            due = datetime.date.fromisoformat(due_date)
+        except Exception:
+            return "Error: Invalid date format."
+
+        if due < today:
             return "Error: Due date cannot be in the past."
+
+        # ------------------------------
+        # HYBRID PRIORITY LOGIC
+        # ------------------------------
+
+        if not priority or priority == "auto":
+
+            days_left = (due - today).days
+
+            if days_left <= 1:
+                priority = "high"
+            elif days_left <= 3:
+                priority = "medium"
+            else:
+                priority = "low"
+
+        # Normalize priority
+        priority = priority.lower()
+        if priority not in ["low", "medium", "high"]:
+            priority = "medium"
+
+        # ------------------------------
+        # DATABASE INSERT
+        # ------------------------------
 
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
 
         cursor.execute(
             """
-            INSERT INTO assignments (title, subject, due_date, status)
-            VALUES (?, ?, ?, 'pending')
+            INSERT INTO assignments (title, subject, due_date, status, priority)
+            VALUES (?, ?, ?, 'pending', ?)
             """,
-            (title.strip(), subject.strip(), due_date),
+            (title.strip(), subject.strip(), due_date, priority),
         )
 
         conn.commit()
         conn.close()
 
-        return "✅ Assignment added successfully"
+        return f"✅ Assignment added (Priority: {priority.upper()})"
 
     except Exception as e:
         return f"Error adding assignment: {str(e)}"
@@ -44,7 +75,7 @@ def add_assignment(title, subject, due_date):
 
 def get_assignments():
     """
-    Return only pending assignments with future due dates.
+    Return only pending assignments with priority sorting.
     """
 
     try:
@@ -56,11 +87,17 @@ def get_assignments():
 
         cursor.execute(
             """
-            SELECT id, title, subject, due_date, status
+            SELECT id, title, subject, due_date, status, priority
             FROM assignments
             WHERE status = 'pending'
             AND due_date >= ?
-            ORDER BY due_date ASC
+            ORDER BY 
+                CASE priority
+                    WHEN 'high' THEN 1
+                    WHEN 'medium' THEN 2
+                    WHEN 'low' THEN 3
+                END,
+                due_date ASC
             """,
             (today,),
         )
