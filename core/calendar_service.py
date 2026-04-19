@@ -16,18 +16,15 @@ TIMEZONE = "Asia/Kolkata"
 # AUTHENTICATION
 # --------------------------------------------------
 
-
 def authenticate_google_calendar():
 
     try:
 
         creds = None
 
-        # Load saved token
         if os.path.exists("token.json"):
             creds = Credentials.from_authorized_user_file("token.json", SCOPES)
 
-        # Refresh or create new token
         if not creds or not creds.valid:
 
             if creds and creds.expired and creds.refresh_token:
@@ -37,28 +34,21 @@ def authenticate_google_calendar():
                 flow = InstalledAppFlow.from_client_secrets_file(
                     "credentials.json", SCOPES
                 )
-
                 creds = flow.run_local_server(port=0)
 
-            # Save token
             with open("token.json", "w") as token:
                 token.write(creds.to_json())
 
-        service = build("calendar", "v3", credentials=creds)
-
-        return service
+        return build("calendar", "v3", credentials=creds)
 
     except Exception as e:
-
         print("GOOGLE AUTH ERROR:", e)
-
         raise Exception("Google Calendar authentication failed.")
 
 
 # --------------------------------------------------
-# LIST UPCOMING EVENTS
+# LIST EVENTS (🔥 FIXED: NO CACHE)
 # --------------------------------------------------
-
 
 def list_upcoming_events():
 
@@ -66,43 +56,26 @@ def list_upcoming_events():
 
         service = authenticate_google_calendar()
 
-        ist = pytz.timezone(TIMEZONE)
+        now = datetime.datetime.utcnow().isoformat() + "Z"
 
-        # look back one day so today's events aren't missed
-        now = (datetime.datetime.now(ist) - datetime.timedelta(days=1)).isoformat()
+        events_result = service.events().list(
+            calendarId="primary",
+            timeMin=now,
+            maxResults=100,
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
 
-        events_result = (
-            service.events()
-            .list(
-                calendarId="primary",
-                timeMin=now,
-                maxResults=100,
-                singleEvents=True,
-                orderBy="startTime",
-            )
-            .execute()
-        )
-
-        events = events_result.get("items", [])
-
-        print("DEBUG: EVENTS FROM GOOGLE:", len(events))
-
-        for e in events:
-            print("EVENT:", e.get("summary"), e.get("start"))
-
-        return events
+        return events_result.get("items", [])
 
     except Exception as e:
-
         print("LIST EVENTS ERROR:", e)
-
         return []
 
 
 # --------------------------------------------------
 # CREATE EVENT
 # --------------------------------------------------
-
 
 def create_event(title, date, start_time, end_time):
 
@@ -132,31 +105,20 @@ def create_event(title, date, start_time, end_time):
             },
         }
 
-        created_event = (
+        return (
             service.events()
-            .insert(
-                calendarId="primary",
-                body=event,
-            )
+            .insert(calendarId="primary", body=event)
             .execute()
         )
 
-        print("DEBUG: EVENT CREATED:", created_event.get("summary"))
-        print("DEBUG: EVENT ID:", created_event.get("id"))
-
-        return created_event
-
     except Exception as e:
-
         print("GOOGLE CREATE EVENT ERROR:", e)
-
-        raise Exception("Failed to create event in Google Calendar.")
+        raise Exception("Failed to create event.")
 
 
 # --------------------------------------------------
-# DELETE EVENT
+# DELETE EVENT (🔥 IMPROVED)
 # --------------------------------------------------
-
 
 def delete_event(event_id):
 
@@ -169,21 +131,18 @@ def delete_event(event_id):
             eventId=event_id,
         ).execute()
 
-        print("DEBUG: EVENT DELETED:", event_id)
+        print(f"✅ Deleted event: {event_id}")
 
         return True
 
     except Exception as e:
-
-        print("DELETE EVENT ERROR:", e)
-
+        print("❌ DELETE EVENT ERROR:", e)
         return False
 
 
 # --------------------------------------------------
-# CHECK DUPLICATE EVENT
+# DUPLICATE CHECK
 # --------------------------------------------------
-
 
 def event_exists_on_date(title, date):
 
@@ -201,28 +160,19 @@ def event_exists_on_date(title, date):
             datetime.datetime.strptime(date + " 23:59", "%Y-%m-%d %H:%M")
         )
 
-        events_result = (
-            service.events()
-            .list(
-                calendarId="primary",
-                timeMin=start_dt.isoformat(),
-                timeMax=end_dt.isoformat(),
-                singleEvents=True,
-            )
-            .execute()
-        )
+        events_result = service.events().list(
+            calendarId="primary",
+            timeMin=start_dt.isoformat(),
+            timeMax=end_dt.isoformat(),
+            singleEvents=True,
+        ).execute()
 
-        events = events_result.get("items", [])
-
-        for event in events:
-
+        for event in events_result.get("items", []):
             if event.get("summary", "").strip().lower() == title.strip().lower():
                 return True
 
         return False
 
     except Exception as e:
-
         print("DUPLICATE CHECK ERROR:", e)
-
         return False

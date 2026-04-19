@@ -25,6 +25,10 @@ WEEKDAYS = {
 }
 
 
+# -----------------------------------
+# DATE NORMALIZATION
+# -----------------------------------
+
 def normalize_date_input(date, today):
 
     if not date:
@@ -38,7 +42,6 @@ def normalize_date_input(date, today):
     if date == "tomorrow":
         return today + datetime.timedelta(days=1)
 
-    # try natural language parser
     parsed = parse_natural_date(date)
 
     if parsed:
@@ -56,33 +59,34 @@ def normalize_date_input(date, today):
         return None
 
 
-def find_free_time(
-    days: int = 1,
-    period: str = None,
-    date: str = None,
-    weekday: str = None,
-):
+# -----------------------------------
+# CORE LOGIC (STRUCTURED)
+# -----------------------------------
+
+def get_free_time_structured(days=1, period=None, date=None, weekday=None):
 
     ist = pytz.timezone(TIMEZONE)
     today = datetime.datetime.now(ist).date()
 
-    # -----------------------------------
-    # DATE HANDLING
-    # -----------------------------------
+    # ✅ FIXED DATE HANDLING
+    if date == "tomorrow":
+        parsed_date = today + datetime.timedelta(days=1)
 
-    parsed_date = normalize_date_input(date, today)
+    elif date == "today":
+        parsed_date = today
+
+    else:
+        parsed_date = normalize_date_input(date, today)
 
     if parsed_date:
-
         start_day = parsed_date
         end_day = parsed_date
 
     elif weekday:
-
         weekday = weekday.lower()
 
         if weekday not in WEEKDAYS:
-            return "Invalid weekday."
+            return {}
 
         target = WEEKDAYS[weekday]
         days_ahead = (target - today.weekday()) % 7
@@ -91,16 +95,10 @@ def find_free_time(
         end_day = start_day
 
     else:
-
         start_day = today
         end_day = today + datetime.timedelta(days=days - 1)
 
-    # -----------------------------------
-    # FETCH EVENTS
-    # -----------------------------------
-
     events = list_upcoming_events()
-
     results = {}
 
     current_day = start_day
@@ -114,12 +112,10 @@ def find_free_time(
             start_info = event.get("start", {})
             end_info = event.get("end", {})
 
-            # skip all-day events
             if "dateTime" not in start_info:
                 continue
 
             try:
-
                 start = datetime.datetime.fromisoformat(
                     start_info["dateTime"].replace("Z", "+00:00")
                 ).astimezone(ist)
@@ -154,44 +150,70 @@ def find_free_time(
         if cursor < day_end:
             free.append((cursor, day_end))
 
-        # -----------------------------------
         # PERIOD FILTER
-        # -----------------------------------
+        if period:
+            period = period.lower()
 
-        if period in PERIODS:
+            if period in PERIODS:
 
-            p_start = datetime.datetime.strptime(PERIODS[period][0], "%H:%M").time()
-            p_end = datetime.datetime.strptime(PERIODS[period][1], "%H:%M").time()
+                p_start = datetime.datetime.strptime(PERIODS[period][0], "%H:%M").time()
+                p_end = datetime.datetime.strptime(PERIODS[period][1], "%H:%M").time()
 
-            filtered = []
+                filtered = []
 
-            for s, e in free:
+                for s, e in free:
+                    start = max(s, p_start)
+                    end = min(e, p_end)
 
-                start = max(s, p_start)
-                end = min(e, p_end)
+                    if start < end:
+                        filtered.append((start, end))
 
-                if start < end:
-                    filtered.append((start, end))
+                free = filtered
 
-            free = filtered
-
-        formatted_slots = []
-
-        for s, e in free:
-            formatted_slots.append(f"{s.strftime('%H:%M')} - {e.strftime('%H:%M')}")
-
-        results[str(current_day)] = formatted_slots
+        results[current_day.isoformat()] = [
+            {
+                "start": s.strftime("%H:%M"),
+                "end": e.strftime("%H:%M"),
+                "display": f"{s.strftime('%H:%M')} - {e.strftime('%H:%M')}",
+            }
+            for s, e in free
+        ]
 
         current_day += datetime.timedelta(days=1)
 
+    return results
+
+
+# -----------------------------------
+# USER TOOL (TEXT OUTPUT)
+# -----------------------------------
+
+def find_free_time(query: str = "", days: int = 1, period: str = None, date: str = None, weekday: str = None, **kwargs):
+
+    # ✅ FIX: PARSE QUERY PROPERLY
+    if query:
+        q = query.lower()
+
+        if "tomorrow" in q:
+            date = "tomorrow"
+
+        elif "today" in q:
+            date = "today"
+
+        for p in PERIODS:
+            if p in q:
+                period = p
+
+        for w in WEEKDAYS:
+            if w in q:
+                weekday = w
+
+    results = get_free_time_structured(days, period, date, weekday)
+
     if not results:
-        return "No free time found."
+        return "⚠️ No free time found."
 
-    # -----------------------------------
-    # FORMAT RESPONSE
-    # -----------------------------------
-
-    message = "🕒 Your Free Time\n\n"
+    message = "🕒 Available Free Time\n\n"
 
     for date_key, slots in results.items():
 
@@ -202,11 +224,11 @@ def find_free_time(
         message += f"📅 {formatted_date}\n"
 
         if not slots:
-            message += "• No free slots\n\n"
+            message += "• ❌ No free slots\n\n"
             continue
 
         for slot in slots:
-            message += f"• {slot}\n"
+            message += f"• {slot['display']}\n"
 
         message += "\n"
 

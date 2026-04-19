@@ -1,79 +1,96 @@
-from core.assignment_manager import add_assignment
 import datetime
+from core.assignment_manager import add_assignment
+from core.date_parser import parse_natural_date
 
 
-def add_assignment_tool(title: str, subject: str, due_date: str, priority: str = "auto"):
-    """
-    Add a new assignment with optional priority.
-
-    Parameters
-    ----------
-    title : str
-        Assignment title
-    subject : str
-        Subject name
-    due_date : str
-        Due date in YYYY-MM-DD format
-    priority : str
-        Priority (low, medium, high, auto)
-    """
+def add_assignment_tool(query: str = "", title: str = "", subject: str = "", due_date: str = "", priority: str = "auto", **kwargs):
 
     try:
 
-        # -------------------------------
-        # BASIC VALIDATION
-        # -------------------------------
+        # -------------------------
+        # HANDLE LANGCHAIN "args"
+        # -------------------------
+
+        if "args" in kwargs:
+            args = kwargs["args"]
+
+            # Example: ('physics', {'due': 'tomorrow'})
+            if isinstance(args, tuple) and len(args) >= 1:
+                title = args[0]
+
+                if len(args) > 1 and isinstance(args[1], dict):
+                    due = args[1].get("due")
+
+                    if due == "tomorrow":
+                        due_date = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+                    elif due == "today":
+                        due_date = datetime.date.today().isoformat()
+
+        # -------------------------
+        # NLP QUERY PARSING
+        # -------------------------
+
+        if query:
+            q = query.lower()
+
+            if not title:
+                words = q.replace("add assignment", "").replace("due", "").strip().split()
+                if words:
+                    title = words[0].capitalize()
+
+            if not subject:
+                subject = title
+
+            parsed = parse_natural_date(q)
+
+            if parsed:
+                due_date = parsed
+
+            elif "tomorrow" in q:
+                due_date = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+
+            elif "today" in q:
+                due_date = datetime.date.today().isoformat()
+
+        # -------------------------
+        # VALIDATION
+        # -------------------------
 
         if not title:
-            return "Error: Assignment title is required."
+            return "❌ Assignment title is required."
 
         if not due_date:
-            return "Error: Due date is required."
+            return "❌ Due date is required."
 
         title = title.strip()
         subject = subject.strip() if subject else "General"
 
-        # -------------------------------
-        # NORMALIZE DATE
-        # -------------------------------
-
         try:
-
             today = datetime.date.today()
-            parsed = datetime.datetime.strptime(due_date, "%Y-%m-%d").date()
+            parsed = datetime.date.fromisoformat(due_date)
 
-            # Fix LLM wrong-year hallucination
-            if parsed.year < today.year:
-                parsed = parsed.replace(year=today.year)
-
-            # Prevent past assignments
             if parsed < today:
-                return "Error: Due date cannot be in the past."
+                return "❌ Due date cannot be in the past."
 
             due_date = parsed.isoformat()
 
         except Exception:
-            return "Invalid due date format. Please use YYYY-MM-DD."
+            return "❌ Invalid due date format."
 
-        # -------------------------------
-        # NORMALIZE PRIORITY
-        # -------------------------------
-
-        if not priority:
-            priority = "auto"
-
-        priority = priority.lower()
+        # -------------------------
+        # PRIORITY
+        # -------------------------
 
         if priority not in ["low", "medium", "high", "auto"]:
             priority = "auto"
 
-        # -------------------------------
-        # SAVE ASSIGNMENT
-        # -------------------------------
+        # -------------------------
+        # SAVE
+        # -------------------------
 
         result = add_assignment(title, subject, due_date, priority)
 
         return result
 
     except Exception as e:
-        return f"Error adding assignment: {str(e)}"
+        return f"❌ Error adding assignment: {str(e)}"

@@ -15,7 +15,9 @@ def has_conflict(date, start_time, end_time):
             datetime.datetime.fromisoformat(f"{date}T{start_time}:00")
         )
 
-        new_end = ist.localize(datetime.datetime.fromisoformat(f"{date}T{end_time}:00"))
+        new_end = ist.localize(
+            datetime.datetime.fromisoformat(f"{date}T{end_time}:00")
+        )
 
         events = list_upcoming_events()
 
@@ -24,6 +26,7 @@ def has_conflict(date, start_time, end_time):
             start_data = event.get("start", {})
             end_data = event.get("end", {})
 
+            # skip all-day events
             if "dateTime" not in start_data or "dateTime" not in end_data:
                 continue
 
@@ -34,24 +37,38 @@ def has_conflict(date, start_time, end_time):
                 end_data["dateTime"].replace("Z", "+00:00")
             )
 
-            # Convert to same timezone if needed
+            # normalize timezone
             if existing_start.tzinfo is None:
                 existing_start = ist.localize(existing_start)
+            else:
+                existing_start = existing_start.astimezone(ist)
 
             if existing_end.tzinfo is None:
                 existing_end = ist.localize(existing_end)
+            else:
+                existing_end = existing_end.astimezone(ist)
 
+            # only same day
             if existing_start.date() != new_start.date():
                 continue
 
-            # Overlap check
+            # overlap condition
             if new_start < existing_end and new_end > existing_start:
 
-                return True, event.get("summary", "Existing Event")
+                return {
+                    "conflict": True,
+                    "event_name": event.get("summary", "Existing Event"),
+                    "event_start": existing_start.strftime("%H:%M"),
+                    "event_end": existing_end.strftime("%H:%M"),
+                }
 
-        return False, None
+        return {
+            "conflict": False
+        }
 
-    except Exception:
+    except Exception as e:
 
-        # If anything fails we assume no conflict
-        return False, None
+        return {
+            "conflict": False,
+            "error": str(e)
+        }

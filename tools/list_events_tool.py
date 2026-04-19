@@ -5,42 +5,130 @@ import pytz
 TIMEZONE = "Asia/Kolkata"
 
 
-def list_events_tool():
+# -----------------------------------
+# CORE FUNCTION (STRUCTURED DATA)
+# -----------------------------------
 
-    events = list_upcoming_events()
+def get_events_structured(limit=50):
 
-    if not events:
-        return "You have no upcoming events."
+    try:
 
-    ist = pytz.timezone(TIMEZONE)
+        events = list_upcoming_events()
 
-    message = "📅 Your Upcoming Events:\n\n"
+        if not events:
+            return []
 
-    for event in events[:10]:
+        ist = pytz.timezone(TIMEZONE)
 
-        title = event.get("summary", "Untitled Event")
+        structured = []
 
-        start_info = event.get("start", {})
+        for event in events[:limit]:
 
-        # timed event
-        if "dateTime" in start_info:
+            title = event.get("summary") or "Untitled Event"
+            start_info = event.get("start", {})
+            end_info = event.get("end", {})
 
-            start = datetime.datetime.fromisoformat(
-                start_info["dateTime"].replace("Z", "+00:00")
-            ).astimezone(ist)
+            if "dateTime" in start_info:
 
-            time_str = start.strftime("%d %b %Y | %I:%M %p")
+                start = datetime.datetime.fromisoformat(
+                    start_info["dateTime"].replace("Z", "+00:00")
+                ).astimezone(ist)
 
-        # all-day event
-        elif "date" in start_info:
+                end = datetime.datetime.fromisoformat(
+                    end_info["dateTime"].replace("Z", "+00:00")
+                ).astimezone(ist)
 
-            start = datetime.date.fromisoformat(start_info["date"])
+                structured.append({
+                    "title": title,
+                    "date": start.date(),
+                    "start_time": start.strftime("%H:%M"),
+                    "end_time": end.strftime("%H:%M"),
+                    "display_time": start.strftime("%I:%M %p"),
+                    "all_day": False,
+                    "event_id": event.get("id"),
+                })
 
-            time_str = start.strftime("%d %b %Y | All Day")
+            elif "date" in start_info:
+
+                start = datetime.date.fromisoformat(start_info["date"])
+
+                structured.append({
+                    "title": title,
+                    "date": start,
+                    "start_time": None,
+                    "end_time": None,
+                    "display_time": "All Day",
+                    "all_day": True,
+                    "event_id": event.get("id"),
+                })
+
+        return structured
+
+    except Exception:
+        return []
+
+
+# -----------------------------------
+# FILTER FUNCTION
+# -----------------------------------
+
+def filter_events(events, mode=None):
+
+    today = datetime.date.today()
+
+    if mode == "today":
+        return [e for e in events if e["date"] == today]
+
+    elif mode == "tomorrow":
+        tomorrow = today + datetime.timedelta(days=1)
+        return [e for e in events if e["date"] == tomorrow]
+
+    return events
+
+
+# -----------------------------------
+# USER TOOL
+# -----------------------------------
+
+def list_events_tool(query: str = ""):
+
+    try:
+
+        events = get_events_structured(limit=50)
+
+        if not events:
+            return "📭 You have no upcoming events."
+
+        query = (query or "").lower()
+
+        # 🔥 detect intent
+        if "tomorrow" in query:
+            events = filter_events(events, "tomorrow")
+            title = "📅 Tomorrow's Schedule\n\n"
+
+        elif "today" in query:
+            events = filter_events(events, "today")
+            title = "📅 Today's Schedule\n\n"
 
         else:
-            continue
+            title = "📅 Upcoming Events\n\n"
 
-        message += f"• {title}\n🕒 {time_str}\n\n"
+        if not events:
+            return "📭 No events found."
 
-    return message
+        # sort by date + time
+        events.sort(key=lambda x: (x["date"], x["start_time"] or "00:00"))
+
+        message = title
+
+        for e in events[:10]:
+
+            formatted_date = e["date"].strftime("%d %b %Y")
+
+            message += f"• {e['title']}\n"
+            message += f"  🕒 {formatted_date} | {e['display_time']}\n\n"
+
+        return message
+
+    except Exception:
+        return "❌ Failed to fetch events."

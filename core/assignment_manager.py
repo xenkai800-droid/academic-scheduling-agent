@@ -3,35 +3,33 @@ import datetime
 from db.database import DB_NAME
 
 
+# -----------------------------------
+# ADD ASSIGNMENT
+# -----------------------------------
+
 def add_assignment(title, subject, due_date, priority="auto"):
-    """
-    Add a new assignment with hybrid priority:
-    - User-defined priority OR
-    - Auto-calculated based on urgency
-    """
 
     try:
 
         if not title:
-            return "Error: Assignment title is required."
+            return "❌ Assignment title is required."
 
         if not due_date:
-            return "Error: Due date is required."
+            return "❌ Due date is required."
 
         today = datetime.date.today()
 
-        # Convert due_date safely
         try:
             due = datetime.date.fromisoformat(due_date)
         except Exception:
-            return "Error: Invalid date format."
+            return "❌ Invalid date format."
 
         if due < today:
-            return "Error: Due date cannot be in the past."
+            return "❌ Due date cannot be in the past."
 
-        # ------------------------------
-        # HYBRID PRIORITY LOGIC
-        # ------------------------------
+        # -------------------------
+        # PRIORITY LOGIC
+        # -------------------------
 
         if not priority or priority == "auto":
 
@@ -44,14 +42,14 @@ def add_assignment(title, subject, due_date, priority="auto"):
             else:
                 priority = "low"
 
-        # Normalize priority
         priority = priority.lower()
+
         if priority not in ["low", "medium", "high"]:
             priority = "medium"
 
-        # ------------------------------
-        # DATABASE INSERT
-        # ------------------------------
+        # -------------------------
+        # SAVE TO DB
+        # -------------------------
 
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
@@ -70,13 +68,14 @@ def add_assignment(title, subject, due_date, priority="auto"):
         return f"✅ Assignment added (Priority: {priority.upper()})"
 
     except Exception as e:
-        return f"Error adding assignment: {str(e)}"
+        return f"❌ Error adding assignment: {str(e)}"
 
+
+# -----------------------------------
+# GET ASSIGNMENTS (STRUCTURED)
+# -----------------------------------
 
 def get_assignments():
-    """
-    Return only pending assignments with priority sorting.
-    """
 
     try:
 
@@ -105,16 +104,29 @@ def get_assignments():
         rows = cursor.fetchall()
         conn.close()
 
-        return rows
+        structured = []
+
+        for r in rows:
+            structured.append({
+                "id": r[0],
+                "title": r[1],
+                "subject": r[2] or "General",
+                "due_date": r[3],
+                "status": r[4],
+                "priority": r[5],
+            })
+
+        return structured
 
     except Exception:
         return []
 
 
+# -----------------------------------
+# MARK COMPLETE
+# -----------------------------------
+
 def mark_assignment_complete(assignment_id):
-    """
-    Delete assignment when completed.
-    """
 
     try:
 
@@ -132,7 +144,7 @@ def mark_assignment_complete(assignment_id):
         conn.commit()
         conn.close()
 
-        return "✅ Assignment completed and removed"
+        return "✅ Assignment completed"
 
     except Exception as e:
-        return f"Error removing assignment: {str(e)}"
+        return f"❌ Error removing assignment: {str(e)}"

@@ -1,13 +1,17 @@
 import streamlit as st
 import datetime
 import pytz
+import pandas as pd
 
-from tools.study_suggestion_tool import suggest_study_session_tool
 from core.reminder_engine import get_due_assignments
+from core.email_reminder import send_email_reminders
+
 from tools.add_event_tool import add_event_tool
 from tools.find_free_time_tool import find_free_time
 from tools.add_assignment_tool import add_assignment_tool
+
 from core.agent_controller import run_agent
+from core.semester_manager import apply_semester_template
 
 from core.calendar_service import (
     list_upcoming_events,
@@ -22,9 +26,8 @@ from core.assignment_manager import (
 
 from db.database import initialize_database, delete_local_event
 
-# --------------------------------------------------
-# PAGE CONFIG
-# --------------------------------------------------
+
+# ---------------- PAGE CONFIG ----------------
 
 st.set_page_config(
     page_title="Academic Scheduling Agent",
@@ -34,290 +37,353 @@ st.set_page_config(
 
 initialize_database()
 
-# --------------------------------------------------
-# HEADER
-# --------------------------------------------------
+# ---------------- HEADER ----------------
 
 st.title("📅 Academic Scheduling Agent")
-st.markdown("Manage your academic schedule with seamless Google Calendar integration.")
+st.markdown("AI-powered academic planner with smart scheduling & conflict management.")
 st.divider()
 
-# --------------------------------------------------
-# REMINDER PANEL
-# --------------------------------------------------
+# ---------------- REMINDERS ----------------
 
 reminders = get_due_assignments()
 
 if reminders:
-
-    st.warning("⚠ Upcoming Assignment Reminders")
+    st.warning("⚠️ Upcoming Assignment Deadlines")
 
     today = datetime.date.today()
 
-    for aid, title, subject, due in reminders:
+    for r in reminders:
 
+        if isinstance(r, dict):
+            aid = r["id"]
+            title = r["title"]
+            subject = r.get("subject", "General")
+            due = r["due_date"]
+            status = r.get("status", "")
+        else:
+            aid, title, subject, due = r
+            status = ""
+
+        subject = subject or "General"
         due_date = datetime.date.fromisoformat(due)
 
-        if due_date < today:
-            label = "⚠ Past Due"
-        elif due_date == today:
+        if status == "past_due" or due_date < today:
+            label = "⚠️ Past Due"
+            show_delete = True
+        elif status == "today" or due_date == today:
             label = "⏰ Due Today"
+            show_delete = False
         else:
             label = "⏳ Due Tomorrow"
+            show_delete = False
 
-        st.write(f"• {title} ({subject}) — {label}")
+        col1, col2 = st.columns([5, 1])
+
+        with col1:
+            st.write(f"• {title} ({subject}) — {label}")
+
+        with col2:
+            if show_delete:
+                if st.button("❌", key=f"rem_{aid}"):
+                    mark_assignment_complete(aid)
+                    st.rerun()
 
 st.divider()
 
-# --------------------------------------------------
-# SIDEBAR
-# --------------------------------------------------
+# ---------------- NAVIGATION ----------------
 
 st.sidebar.header("Navigation")
 
 pages = [
+    "AI Assistant",
+    "Dashboard",
     "Create Event",
-    "View Upcoming Events",
     "Find Free Time",
     "Assignments",
-    "AI Assistant",
 ]
 
-default_page = st.session_state.get("page_redirect", pages[0])
+page = st.sidebar.radio("Go to", pages)
 
-page = st.sidebar.radio(
-    "Go to",
-    pages,
-    index=pages.index(default_page),
-)
 
-st.session_state["page_redirect"] = page
+# ==================================================
+# 🤖 AI ASSISTANT (CLEAN MODE)
+# ==================================================
 
-# --------------------------------------------------
-# CREATE EVENT
-# --------------------------------------------------
+if page == "AI Assistant":
 
-if page == "Create Event":
+    st.subheader("🤖 AI Scheduling Assistant")
 
-    st.subheader("➕ Create New Event")
+    if st.button("📚 Apply Semester Template"):
+        result = apply_semester_template(datetime.date.today().isoformat())
+        st.success(result)
 
-    default_title = st.session_state.get("study_assignment", "")
+    st.divider()
 
-    with st.container(border=True):
+    query = st.text_input(
+        "Enter your request",
+        placeholder="e.g. schedule math exam tomorrow at 10am"
+    )
 
-        col1, col2 = st.columns(2)
+    if st.button("Run AI"):
 
-        with col1:
-            title = st.text_input("Event Title", value=default_title)
-            date = st.date_input("Event Date")
+        if not query.strip():
+            st.error("❌ Please enter a request")
+        else:
+            response = run_agent(query)
 
-        with col2:
-            start_time = st.time_input("Start Time")
-            end_time = st.time_input("End Time")
+            st.divider()
 
-        if st.button("🚀 Create Event"):
+            # 🔥 CLEAN OUTPUT BLOCK
+            with st.container(border=True):
+                st.markdown("### 🤖 Result")
+                st.markdown(response)
 
-            event_datetime = datetime.datetime.combine(date, start_time)
-            now = datetime.datetime.now()
 
-            if not title.strip():
-                st.error("❌ Event title cannot be empty.")
+# ==================================================
+# 📊 DASHBOARD
+# ==================================================
 
-            elif event_datetime < now:
-                st.error("❌ Cannot create event in the past.")
+elif page == "Dashboard":
 
-            elif end_time <= start_time:
-                st.error("❌ End time must be later than start time.")
+    st.subheader("📊 Schedule Dashboard")
 
-            elif event_exists_on_date(title, date.isoformat()):
-                st.error("❌ Event already exists on this date.")
+    st.subheader("📧 Reminders")
 
-            else:
+    if st.button("Send Reminder Email Now"):
+        try:
+            send_email_reminders(
+                st.secrets["EMAIL_USER"],
+                st.secrets["EMAIL_PASS"],
+                st.secrets["USER_EMAIL"]
+            )
+            st.success("✅ Reminder email sent")
+        except Exception as e:
+            st.error(f"❌ Email failed: {str(e)}")
 
-                result = add_event_tool(
-                    title.strip(),
-                    date.isoformat(),
-                    start_time.strftime("%H:%M"),
-                    end_time.strftime("%H:%M"),
-                )
-
-                if "❌" in result:
-                    st.error(result)
-                else:
-                    st.success(result)
-
-# --------------------------------------------------
-# VIEW EVENTS
-# --------------------------------------------------
-
-elif page == "View Upcoming Events":
-
-    st.subheader("📌 Upcoming Events")
+    st.divider()
 
     events = list_upcoming_events()
 
     if not events:
-        st.info("No upcoming events found.")
-
+        st.info("No upcoming events.")
     else:
 
         IST = pytz.timezone("Asia/Kolkata")
+        grouped = {}
 
         for event in events:
 
-            start_data = event["start"]
+            start = event.get("start", {})
 
-            if "dateTime" in start_data:
-                dt = datetime.datetime.fromisoformat(start_data["dateTime"].replace("Z", "+00:00"))
-                dt = dt.astimezone(IST)
-                time_str = dt.strftime("%d %b %Y | %I:%M %p")
+            if "dateTime" in start:
+                dt = datetime.datetime.fromisoformat(
+                    start["dateTime"].replace("Z", "+00:00")
+                ).astimezone(IST)
+                date_key = dt.date()
+                time_str = dt.strftime("%I:%M %p")
+
+            elif "date" in start:
+                date_key = datetime.date.fromisoformat(start["date"])
+                time_str = "All Day"
             else:
-                dt = datetime.date.fromisoformat(start_data["date"])
-                time_str = dt.strftime("%d %b %Y | All Day")
+                continue
 
-            with st.container(border=True):
+            grouped.setdefault(date_key, []).append((event, time_str))
 
-                col1, col2 = st.columns([4, 1])
+        for date_key in sorted(grouped.keys()):
 
-                with col1:
-                    st.markdown(f"**{event['summary']}**  \n🕒 {time_str}")
+            st.markdown(f"### 📅 {date_key.strftime('%d %b %Y')}")
 
-                with col2:
-                    if st.button("🗑", key=event["id"]):
-                        delete_event(event["id"])
-                        delete_local_event(event["id"])
-                        st.rerun()
+            for event, time_str in grouped[date_key]:
 
-# --------------------------------------------------
+                with st.container(border=True):
+
+                    col1, col2 = st.columns([4, 1])
+
+                    with col1:
+                        st.markdown(f"**{event['summary']}**  \n🕒 {time_str}")
+
+                    with col2:
+                        if st.button("🗑", key=event["id"]):
+                            delete_event(event["id"])
+                            delete_local_event(event["id"])
+                            st.rerun()
+
+    st.divider()
+
+    st.subheader("📤 Export Schedule")
+
+    if events:
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+        from io import BytesIO
+        from datetime import datetime
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Schedule"
+
+        # Headers
+        headers = ["Title", "Start", "End", "Type"]
+        ws.append(headers)
+
+        # Format function
+        def format_dt(dt_str):
+            try:
+                dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+                return dt.strftime("%d-%m-%Y %H:%M")
+            except:
+                return dt_str
+
+        # Data
+        for e in events:
+            start = e.get("start", {})
+            end = e.get("end", {})
+
+            start_val = format_dt(start.get("dateTime") or start.get("date", ""))
+            end_val = format_dt(end.get("dateTime") or end.get("date", ""))
+
+            ws.append([
+                e.get("summary"),
+                start_val,
+                end_val,
+                "All Day" if "date" in start else "Timed"
+            ])
+
+        # 🔥 AUTO COLUMN WIDTH
+        for col in ws.columns:
+            max_length = 0
+            col_letter = get_column_letter(col[0].column)
+
+            for cell in col:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+
+            ws.column_dimensions[col_letter].width = max_length + 2
+
+        # Save to memory
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        # Download
+        st.download_button(
+            "Download Excel",
+            buffer,
+            file_name="schedule.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+
+# ==================================================
+# CREATE EVENT
+# ==================================================
+
+elif page == "Create Event":
+
+    st.subheader("➕ Create Event")
+
+    title = st.text_input("Title")
+    date = st.date_input("Date")
+    start_time = st.time_input("Start Time")
+    end_time = st.time_input("End Time")
+
+    if st.button("Create"):
+
+        if not title.strip():
+            st.error("Title required")
+
+        elif end_time <= start_time:
+            st.error("Invalid time range")
+
+        elif event_exists_on_date(title, date.isoformat()):
+            st.error("Event already exists")
+
+        else:
+            result = add_event_tool(
+                title,
+                date.isoformat(),
+                start_time.strftime("%H:%M"),
+                end_time.strftime("%H:%M"),
+            )
+
+            if "⚠️" in result:
+                st.warning(result)
+                st.info("Try another time → Check Free Time below 👇")
+
+                free = find_free_time(date=date.isoformat())
+                st.markdown(free)
+
+            elif "❌" in result:
+                st.error(result)
+
+            else:
+                st.success(result)
+
+
+# ==================================================
 # FIND FREE TIME
-# --------------------------------------------------
+# ==================================================
 
 elif page == "Find Free Time":
 
-    st.subheader("🕒 Find Free Time")
+    st.subheader("🕒 Free Time Finder")
 
-    start_date = st.date_input("Start Date")
-    end_date = st.date_input("End Date")
+    date = st.date_input("Select Date")
 
-    if st.button("Find Free Slots"):
+    if st.button("Check"):
+        result = find_free_time(date=date.isoformat())
+        st.markdown(result)
 
-        results = find_free_time(start_date.isoformat(), end_date.isoformat())
 
-        for day, slots in results.items():
-            st.markdown(f"### {day}")
-            if not slots:
-                st.write("No free slots")
-            else:
-                for slot in slots:
-                    st.write(f"• {slot}")
-
-# --------------------------------------------------
-# ASSIGNMENTS (UPDATED)
-# --------------------------------------------------
+# ==================================================
+# ASSIGNMENTS
+# ==================================================
 
 elif page == "Assignments":
 
-    st.subheader("📚 Assignment Tracker")
+    st.subheader("📚 Assignments")
 
-    with st.container(border=True):
+    title = st.text_input("Title")
+    subject = st.text_input("Subject")
+    due_date = st.date_input("Due Date")
+    priority = st.selectbox("Priority", ["auto", "low", "medium", "high"])
 
-        col1, col2, col3 = st.columns(3)
+    if st.button("Add Assignment"):
 
-        with col1:
-            title = st.text_input("Assignment Title")
+        if not title.strip():
+            st.error("Title required")
 
-        with col2:
-            subject = st.text_input("Subject")
-
-        with col3:
-            due_date = st.date_input("Due Date")
-
-        # ✅ AUTO + MANUAL PRIORITY
-        priority = st.selectbox(
-            "Priority (Optional)",
-            ["auto", "low", "medium", "high"]
-        )
-
-        if st.button("Add Assignment"):
-
-            if not title.strip():
-                st.error("Assignment title cannot be empty")
-
-            elif due_date < datetime.date.today():
-                st.error("Due date cannot be in the past")
-
-            else:
-
-                result = add_assignment_tool(
-                    title.strip(),
-                    subject.strip(),
-                    due_date.isoformat(),
-                    priority,
-                )
-
-                st.success(result)
+        else:
+            result = add_assignment_tool(
+                title,
+                subject,
+                due_date.isoformat(),
+                priority,
+            )
+            st.success(result)
 
     st.divider()
 
     assignments = get_assignments()
 
-    if not assignments:
-        st.info("No assignments added yet.")
+    for a in assignments:
 
-    else:
+        with st.container(border=True):
 
-        for aid, title, subject, due, status, priority in assignments:
+            col1, col2 = st.columns([4, 1])
 
-            with st.container(border=True):
+            with col1:
+                st.markdown(
+                    f"**{a['title']}** ({a['subject']})  \n🔥 {a['priority'].upper()}  \n⏰ {a['due_date']}"
+                )
 
-                col1, col2 = st.columns([4, 1])
+            with col2:
+                if st.button("✔", key=f"a_{a['id']}"):
+                    mark_assignment_complete(a['id'])
+                    st.rerun()
 
-                with col1:
-                    st.markdown(
-                        f"**{title}**  \n📘 {subject}  \n🔥 {priority.upper()}  \n⏰ {due}"
-                    )
 
-                with col2:
-
-                    if st.button("✔", key=f"done_{aid}"):
-                        mark_assignment_complete(aid)
-                        st.rerun()
-
-# --------------------------------------------------
-# AI ASSISTANT
-# --------------------------------------------------
-
-elif page == "AI Assistant":
-
-    st.subheader("🤖 AI Scheduling Assistant")
-
-    query = st.text_input("Enter your request")
-
-    if st.button("Run"):
-
-        if not query.strip():
-            st.error("Enter a request")
-        else:
-            response = run_agent(query)
-
-            if not response:
-                st.error("No response generated.")
-
-            elif "Error" in response or "❌" in response:
-                st.error(response)
-
-            elif "⚠️" in response:
-                st.warning(response)
-
-            elif "📚" in response:
-                st.info(response)
-
-            else:
-                st.success(response)
-
-# --------------------------------------------------
-# FOOTER
-# --------------------------------------------------
+# ---------------- FOOTER ----------------
 
 st.divider()
-st.caption("Built with Streamlit • Google Calendar • AI Scheduling")
+st.caption("Production-ready Academic Scheduling Agent 🚀")
