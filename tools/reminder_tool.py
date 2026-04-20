@@ -11,7 +11,8 @@ def check_due_assignments_tool():
 
         reminders = get_due_assignments()
 
-        if not reminders:
+        # 🔴 HANDLE EMPTY OR INVALID DATA
+        if not reminders or not isinstance(reminders, list):
             return "✅ You have no assignments due today or tomorrow."
 
         today = datetime.date.today()
@@ -20,25 +21,44 @@ def check_due_assignments_tool():
 
         for assignment in reminders:
 
-            # safe unpack
-            _, title, subject, due = assignment[:4]
+            # 🔥 HANDLE DIFFERENT DATA FORMATS SAFELY
+            try:
+                # Case 1: tuple/list
+                if isinstance(assignment, (list, tuple)) and len(assignment) >= 4:
+                    _, title, subject, due = assignment[:4]
 
-            subject = subject if subject else "General"
+                # Case 2: dict
+                elif isinstance(assignment, dict):
+                    title = assignment.get("title", "Untitled")
+                    subject = assignment.get("subject", "General")
+                    due = assignment.get("due_date")
 
-            due_date = datetime.date.fromisoformat(due)
+                else:
+                    continue
 
-            if due_date < today:
-                label = "❗ Past Due"
+                if not due:
+                    continue
 
-            elif due_date == today:
-                label = "⏰ Due Today"
+                subject = subject if subject else "General"
 
-            else:
-                label = "📅 Due Tomorrow"
+                due_date = datetime.date.fromisoformat(due)
 
-            message += f"• {title} ({subject}) — {label}\n\n"
+                if due_date < today:
+                    label = "❗ Past Due"
 
-        return message
+                elif due_date == today:
+                    label = "⏰ Due Today"
+
+                else:
+                    label = "📅 Due Tomorrow"
+
+                message += f"• {title} ({subject}) — {label}\n\n"
+
+            except Exception:
+                # skip broken entries instead of crashing
+                continue
+
+        return message if message.strip() != "📚 Upcoming Assignment Deadlines:" else "✅ No valid assignments found."
 
     except Exception as e:
         return f"Error checking assignments: {str(e)}"
