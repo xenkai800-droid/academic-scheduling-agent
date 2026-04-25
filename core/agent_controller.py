@@ -70,7 +70,7 @@ tools = [
         name="schedule_from_text",
         func=debug_tool(schedule_from_text_tool),
         args_schema=ScheduleInput,
-        description="Schedule an event from natural language",
+        description="Use this to schedule events, classes, meetings, or anything with a time and date , from natural language",
         return_direct=True,
     ),
 
@@ -95,7 +95,7 @@ tools = [
         name="add_assignment",
         func=debug_tool(add_assignment_tool),
         args_schema=QueryInput,  
-        description="Add assignment (e.g. 'add assignment physics due tomorrow')",
+        description="ONLY for adding assignments or homework with a due date. NOT for scheduling events or classes.",
         return_direct=True,
     ),
 
@@ -121,12 +121,6 @@ tools = [
         return_direct=True,
     ),
 
-    StructuredTool.from_function(
-        name="add_event",
-        func=debug_tool(add_event_tool),
-        description="Internal scheduling tool",
-        return_direct=True,
-    ),
 ]
 
 
