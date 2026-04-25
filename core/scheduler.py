@@ -114,7 +114,7 @@ def schedule_event(title, date, start_time, end_time):
         # -------------------------
 
         if is_weekend(date):
-            weekend_warning = "⚠️ Note: This is a weekend.\n\n"
+            weekend_warning = "⚠️ Note: This is a weekend.\n\n" 
         else:
             weekend_warning = ""
         
