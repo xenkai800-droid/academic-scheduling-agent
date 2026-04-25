@@ -153,7 +153,6 @@ if page == "AI Assistant":
             with st.container(border=True):
                 st.markdown("### 🤖 Result")
                 st.markdown(response)
-
 # ==================================================
 # 📊 DASHBOARD
 # ==================================================
@@ -162,6 +161,9 @@ elif page == "Dashboard":
 
     st.subheader("📊 Schedule Dashboard")
 
+    # ==================================================
+    # 📧 REMINDERS
+    # ==================================================
     st.subheader("📧 Reminders")
 
     if st.button("Send Reminder Email Now"):
@@ -181,23 +183,17 @@ elif page == "Dashboard":
 
     IST = pytz.timezone("Asia/Kolkata")
 
-    # -------------------------
-    # TRY GOOGLE EVENTS
-    # -------------------------
+    # ==================================================
+    # 🌐 GOOGLE EVENTS (SAFE)
+    # ==================================================
     try:
         events = list_upcoming_events()
-    except:
+    except Exception:
         events = []
 
-    # -------------------------
-    # GET LOCAL EVENTS
-    # -------------------------
-    local_events = get_all_events()
-
-    # ==================================================
-    # PRIORITY: GOOGLE EVENTS
-    # ==================================================
     if events:
+
+        st.subheader("🌐 Google Events")
 
         grouped = {}
 
@@ -231,20 +227,29 @@ elif page == "Dashboard":
                     col1, col2 = st.columns([4, 1])
 
                     with col1:
-                        st.markdown(f"**{event['summary']}**  \n🕒 {time_str}")
+                        st.markdown(f"**{event.get('summary', 'Untitled')}**  \n🕒 {time_str}")
 
                     with col2:
-                        if st.button("🗑", key=event["id"]):
-                            delete_event(event["id"])
-                            delete_local_event(event["id"])
+                        if st.button("🗑", key=f"google_{event['id']}"):
+
+                            success = delete_event(event["id"])
+
+                            if success:
+                                delete_local_event(event["id"])
+                                st.success("Deleted")
+                            else:
+                                st.error("Delete failed (Google auth?)")
+
                             st.rerun()
 
     # ==================================================
-    # FALLBACK: LOCAL EVENTS
+    # 💾 LOCAL EVENTS (ALWAYS SHOW)
     # ==================================================
-    elif local_events:
+    local_events = get_all_events()
 
-        st.warning("⚠️ Showing locally saved events (offline mode)")
+    if local_events:
+
+        st.subheader("💾 Local Events")
 
         grouped = {}
 
@@ -258,6 +263,8 @@ elif page == "Dashboard":
 
             for title, start, end in grouped[date_key]:
 
+                event_id = f"local_{title}_{date_key}_{start}"
+
                 with st.container(border=True):
 
                     col1, col2 = st.columns([4, 1])
@@ -265,11 +272,20 @@ elif page == "Dashboard":
                     with col1:
                         st.markdown(f"**{title}**  \n🕒 {start} - {end}")
 
-    else:
+                    with col2:
+                        if st.button("🗑", key=f"local_{event_id}"):
+
+                            delete_local_event(event_id)
+                            st.success("Deleted")
+                            st.rerun()
+
+    # ==================================================
+    # EMPTY STATE
+    # ==================================================
+    if not events and not local_events:
         st.info("No upcoming events.")
 
     st.divider()
-
 # ==================================================
 # CREATE EVENT
 # ==================================================
