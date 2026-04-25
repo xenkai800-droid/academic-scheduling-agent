@@ -34,9 +34,20 @@ def add_assignment_tool(query: str = "", title: str = "", subject: str = "", due
             q = query.lower()
 
             if not title:
-                words = q.replace("add assignment", "").replace("due", "").strip().split()
-                if words:
-                    title = words[0].capitalize()
+                cleaned = q.replace("add assignment", "").replace("due", "").strip()
+
+                words = cleaned.split()
+
+                # 🔥 REMOVE DATE WORDS
+                invalid_words = ["today", "tomorrow"]
+
+                filtered = [w for w in words if w not in invalid_words]
+
+                # ALSO REMOVE NUMERIC DATES
+                filtered = [w for w in filtered if not any(c.isdigit() for c in w)]
+
+                if filtered:
+                    title = filtered[0].capitalize()
 
             if not subject:
                 subject = title

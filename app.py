@@ -354,10 +354,10 @@ elif page == "Assignments":
 
         else:
             result = add_assignment_tool(
-                title,
-                subject,
-                due_date.isoformat(),
-                priority,
+                title=title,
+                subject=subject,
+                due_date=due_date.isoformat(),
+                priority=priority,
             )
             st.success(result)
 

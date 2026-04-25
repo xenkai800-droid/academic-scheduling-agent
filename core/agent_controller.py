@@ -94,7 +94,7 @@ tools = [
     StructuredTool.from_function(
         name="add_assignment",
         func=debug_tool(add_assignment_tool),
-        args_schema=QueryInput,  # ✅ THIS IS THE FIX
+        args_schema=QueryInput,  
         description="Add assignment (e.g. 'add assignment physics due tomorrow')",
         return_direct=True,
     ),
@@ -145,21 +145,43 @@ llm = ChatGroq(
 SYSTEM_PROMPT = """
 You are a smart academic scheduling assistant.
 
-Always use tools when possible.
+IMPORTANT RULES:
 
-If user asks about schedule:
-→ pass full query to list_events
+- Use tools ONLY when the user clearly wants to perform an action
+  (e.g. schedule, add, find, check, view schedule)
 
-If scheduling:
-→ use schedule_from_text
+- DO NOT use tools for:
+  • delete/remove requests
+  • help or explanation queries
+  • unclear or incomplete queries
 
-If free time:
-→ use find_free_time
+- If unsure → respond conversationally instead of calling tools
 
-If assignment:
-→ use add_assignment and pass full query
+--------------------------------
 
-Be short, clear, helpful.
+WHEN TO USE TOOLS:
+
+- Scheduling events → use schedule_from_text
+- Finding free time → use find_free_time
+- Viewing schedule/events → use list_events
+- Adding assignments → use add_assignment
+- Checking assignments → use check_due_assignments
+- Planning day ("plan my day", "daily plan") → use daily_planner
+
+--------------------------------
+
+IMPORTANT BEHAVIOR:
+
+- Questions about schedule are ACTION:
+  • "do i have anything tomorrow"
+  • "what is my schedule"
+  • "what do i have tomorrow"
+
+- Help / explanation / unclear → CHAT
+
+--------------------------------
+
+Be short, clear, and helpful.
 """
 
 
@@ -189,6 +211,101 @@ def clean_response(text):
 
 
 # ---------------- RUN AGENT ----------------
+def classify_intent(query: str):
+
+    prompt = f"""
+    You are an intent classification system for an academic scheduling AI.
+
+    Your job is to classify the user query into ONE category:
+
+    1. ACTION → requires scheduling, assignments, calendar, or tool execution
+    2. CHAT → explanation, help, deletion requests, casual conversation, or unclear intent
+
+    ------------------------
+    STRICT RULES:
+
+    - CREATE / ADD / SCHEDULE / FIND / CHECK → ACTION
+    - HOW / HELP / WHY → CHAT
+
+    - Questions about schedule → ACTION:
+    • "do i have anything tomorrow"
+    • "what is my schedule"
+    • "what do i have tomorrow"
+    • "show my schedule"
+
+    - WHAT questions:
+    • If about schedule/time → ACTION
+    • If general (e.g. "what can you do") → CHAT
+
+    - "plan my day" or "daily plan" → ACTION
+
+    - DELETE / REMOVE / CLEAR → CHAT (NOT supported via AI)
+
+    - Vague or unclear → CHAT
+    - If not related to scheduling/assignments → CHAT
+
+    ------------------------
+    EXAMPLES:
+
+    ACTION:
+    - schedule meeting tomorrow at 10am
+    - add assignment physics due tomorrow
+    - find free time tomorrow
+    - show my schedule
+    - check assignments due
+    - plan my day
+
+    CHAT:
+    - can you delete events
+    - how do i add events
+    - what can you do
+    - help me
+    - explain how this works
+    - remove my schedule
+    - clear all events
+
+    ------------------------
+
+    ONLY RETURN ONE WORD:
+    ACTION or CHAT
+
+    Query: {query}
+    """
+
+    response = llm.invoke(prompt)
+    print("RAW INTENT:", getattr(response, "content", None))
+    if hasattr(response, "content"):
+
+        clean = response.content.strip().upper()
+
+        if clean.startswith("CHAT"):
+            return "CHAT"
+        if clean.startswith("ACTION"):
+            return "ACTION"
+
+    return "ACTION"
+
+def handle_conversation(query: str):
+
+    prompt = f"""
+    You are a helpful academic scheduling assistant.
+
+    Answer naturally and conversationally.
+
+    If user asks about deleting events or assignments:
+    → Tell them to use the Dashboard or Assignments section.
+
+    Keep it short, clear, and helpful.
+
+    User: {query}
+    """
+
+    response = llm.invoke(prompt)
+
+    if hasattr(response, "content"):
+        return clean_response(response.content)
+
+    return "⚠️ I couldn't understand that."
 
 def run_agent(query):
 
@@ -200,6 +317,16 @@ def run_agent(query):
         if not query or not query.strip():
             return "❌ Please enter a valid request."
 
+        # 🔥 NEW: INTENT CLASSIFICATION
+        intent = classify_intent(query)
+
+        print("INTENT:", intent)
+
+        # 🔥 CHAT → conversational response
+        if intent == "CHAT":
+            return handle_conversation(query)
+
+        # 🔥 ACTION → normal agent flow (UNCHANGED)
         result = agent.invoke(
             {
                 "messages": [

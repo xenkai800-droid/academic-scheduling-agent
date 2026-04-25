@@ -6,7 +6,7 @@ from tools.find_free_time_tool import find_free_time
 
 def suggest_study_session_tool():
     """
-    Suggest a study session for urgent assignments.
+    Suggest a study session for urgent assignments (due today or tomorrow).
     """
 
     try:
@@ -19,49 +19,48 @@ def suggest_study_session_tool():
         today = datetime.date.today()
         tomorrow = today + datetime.timedelta(days=1)
 
-        urgent_assignment = None
-        urgent_due = None
+        urgent_assignments = []
 
+        # 🔥 FIX: HANDLE DICT FORMAT
         for assignment in assignments:
 
             try:
-                aid, title, subject, due_date, status, priority = assignment
+                due_date_str = assignment.get("due_date")
+                status = assignment.get("status")
+
+                if status != "pending":
+                    continue
+
+                due_date = datetime.date.fromisoformat(due_date_str)
+
             except Exception:
                 continue
 
-            if status != "pending":
-                continue
+            if due_date <= tomorrow:
+                urgent_assignments.append((assignment, due_date))
 
-            due_date = datetime.date.fromisoformat(due_date)
-
-            if urgent_due is None or due_date < urgent_due:
-                urgent_assignment = assignment
-                urgent_due = due_date
-
-        if not urgent_assignment:
+        if not urgent_assignments:
             return "📚 No urgent assignments requiring study time."
 
-        aid, title, subject, due_date, status, priority = urgent_assignment
-        due_date = datetime.date.fromisoformat(due_date)
+        # 🔥 SORT BY URGENCY
+        urgent_assignments.sort(key=lambda x: x[1])
 
-        # Only urgent (today / tomorrow)
-        if due_date > tomorrow:
-            return "📚 No urgent assignments requiring study time."
+        assignment, due_date = urgent_assignments[0]
 
-        subject = subject if subject else "General"
+        title = assignment.get("title", "Untitled")
+        subject = assignment.get("subject", "General")
+        priority = assignment.get("priority", "medium")
 
-        # Get free time
+        # 🔥 GET FREE TIME
         free_time_message = find_free_time(date=today.isoformat())
 
-        # Clean formatting
-        if "No free slots" in free_time_message:
+        if not free_time_message or "No free slots" in free_time_message:
             return (
                 f"📚 Study Recommendation\n\n"
                 f"📌 {title} ({subject})\n"
                 f"🔥 Priority: {priority.upper()}\n"
                 f"⏰ Due: {due_date}\n\n"
-                f"⚠️ No free slots available today.\n"
-                f"Consider adjusting your schedule."
+                f"⚠️ No free slots available today."
             )
 
         return (
@@ -69,7 +68,7 @@ def suggest_study_session_tool():
             f"📌 {title} ({subject})\n"
             f"🔥 Priority: {priority.upper()}\n"
             f"⏰ Due: {due_date}\n\n"
-            f"💡 Suggested study time today:\n\n"
+            f"💡 Suggested study time:\n\n"
             f"{free_time_message}"
         )
 

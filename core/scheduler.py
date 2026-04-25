@@ -4,6 +4,12 @@ from db.database import save_event
 import datetime
 from tools.find_free_time_tool import find_free_time
 
+def is_weekend(date_str):
+    try:
+        date = datetime.date.fromisoformat(date_str)
+        return date.weekday() >= 5  # 5 = Saturday, 6 = Sunday
+    except Exception:
+        return False
 
 # -----------------------------------
 # SEMESTER BREAKS
@@ -101,7 +107,14 @@ def schedule_event(title, date, start_time, end_time):
 
         if is_semester_break(date):
             return "⚠️ Semester Break - Scheduling blocked"
+        
+        # -------------------------
+        # WEEKEND CHECK
+        # -------------------------
 
+        if is_weekend(date):
+            return "⚠️ Weekend detected. Academic scheduling is restricted."
+        
         # -------------------------
         # HOLIDAY
         # -------------------------

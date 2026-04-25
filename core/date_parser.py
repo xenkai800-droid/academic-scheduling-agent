@@ -12,8 +12,22 @@ def extract_date_phrase(text: str):
 
     text = text.lower()
 
-    # Match patterns like:
-    # "15 august", "august 15", "11th march"
+    # -------------------------
+    # 🔥 NEW: NUMERIC DATE SUPPORT
+    # -------------------------
+
+    numeric_match = re.search(
+        r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b",
+        text
+    )
+
+    if numeric_match:
+        return numeric_match.group(0)
+
+    # -------------------------
+    # EXISTING MONTH FORMATS
+    # -------------------------
+
     match = re.search(
         r"\b(\d{1,2}(st|nd|rd|th)?\s+(january|february|march|april|may|june|july|august|september|october|november|december))\b",
         text,
@@ -28,7 +42,7 @@ def extract_date_phrase(text: str):
     if match:
         return match.group(0)
 
-    # fallback: return full text (for "tomorrow", "next monday", etc.)
+    # fallback (for tomorrow, next monday, etc.)
     return text
 
 
@@ -40,7 +54,6 @@ def parse_natural_date(text: str):
     if not text:
         return None
 
-    # 🔥 Extract clean date phrase first
     date_text = extract_date_phrase(text)
 
     parsed = dateparser.parse(
