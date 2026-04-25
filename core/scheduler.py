@@ -114,7 +114,9 @@ def schedule_event(title, date, start_time, end_time):
         # -------------------------
 
         if is_weekend(date):
-            return "⚠️ Weekend detected. Academic scheduling is restricted."
+            weekend_warning = "⚠️ Note: This is a weekend.\n\n"
+        else:
+            weekend_warning = ""
         
         # -------------------------
         # HOLIDAY
@@ -145,22 +147,29 @@ def schedule_event(title, date, start_time, end_time):
                 f"💡 Suggested Free Slots:\n\n{suggestion}"
             )
 
+
         # -------------------------
-        # CREATE EVENT
+        # CREATE EVENT (HYBRID MODE)
         # -------------------------
 
-        created = create_event(title, date, start_time, end_time)
-        # 🔥 FALLBACK (VERY IMPORTANT)
-        if not created or "id" not in created:
-            created = {
-                "id": f"local_{title}_{date}_{start_time}"
-            }
-        if not created or "id" not in created:
-            return "❌ Failed to create event"
+        event_id = None
 
-        save_event(created["id"], title, date, start_time, end_time)
+        try:
+            created = create_event(title, date, start_time, end_time)
+
+            if created and "id" in created:
+                event_id = created["id"]
+
+        except Exception:
+            pass
+
+        if not event_id:
+            event_id = f"local_{title}_{date}_{start_time}"
+
+        save_event(event_id, title, date, start_time, end_time)
 
         return (
+            weekend_warning +
             "✅ Event Created Successfully\n\n"
             f"📌 {title}\n"
             f"📅 {date}\n"

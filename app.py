@@ -4,7 +4,11 @@ import pytz
 import pandas as pd
 
 from core.reminder_engine import get_due_assignments
-from core.email_reminder import send_email_reminders
+try:
+    from core.email_reminder import send_email_reminders
+    EMAIL_ENABLED = True
+except:
+    EMAIL_ENABLED = False
 from tools.add_event_tool import add_event_tool
 from tools.find_free_time_tool import find_free_time
 from tools.add_assignment_tool import add_assignment_tool
@@ -162,12 +166,14 @@ elif page == "Dashboard":
 
     if st.button("Send Reminder Email Now"):
         try:
-            send_email_reminders(
-                st.secrets["EMAIL_USER"],
-                st.secrets["EMAIL_PASS"],
-                st.secrets["USER_EMAIL"]
-            )
-            st.success("✅ Reminder email sent")
+            if EMAIL_ENABLED:
+                send_email_reminders(
+                    st.secrets["EMAIL_USER"],
+                    st.secrets["EMAIL_PASS"],
+                    st.secrets["USER_EMAIL"]
+                )
+            else:
+                st.warning("📧 Email reminders not configured in this environment.")
         except Exception as e:
             st.error(f"❌ Email failed: {str(e)}")
 
