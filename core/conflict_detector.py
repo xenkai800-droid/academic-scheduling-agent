@@ -21,6 +21,9 @@ def has_conflict(date, start_time, end_time):
 
         events = list_upcoming_events()
 
+        if not events:
+            from db.database import get_all_events
+            events = get_all_events()
         for event in events:
 
             start_data = event.get("start", {})

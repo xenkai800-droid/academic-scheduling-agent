@@ -99,6 +99,11 @@ def get_free_time_structured(days=1, period=None, date=None, weekday=None):
         end_day = today + datetime.timedelta(days=days - 1)
 
     events = list_upcoming_events()
+
+    if not events:
+        from db.database import get_all_events
+        events = get_all_events()
+        
     results = {}
 
     current_day = start_day

@@ -51,7 +51,10 @@ def parse_event_request(text):
             days_ahead = (found_day - today.weekday()) % 7
             date = today + datetime.timedelta(days=days_ahead)
         else:
+            # 🔥 move to next working day if weekend
             date = today
+            while date.weekday() >= 5:
+                date += datetime.timedelta(days=1)
 
     # --------------------------------
     # TIME RANGE DETECTION (NEW)
