@@ -14,7 +14,9 @@ def get_events_structured(limit=50):
     try:
 
         events = list_upcoming_events()
-
+        if not events:
+            from db.database import get_all_events
+            events = get_all_events()
         if not events:
             return []
 

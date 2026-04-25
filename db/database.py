@@ -161,3 +161,37 @@ def get_events_by_date(event_date):
 
     except Exception:
         return []
+    
+def get_all_events():
+
+    try:
+
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            SELECT google_event_id, title, event_date, start_time, end_time
+            FROM events
+            ORDER BY event_date, start_time
+            """
+        )
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        events = []
+
+        for r in rows:
+            events.append({
+                "id": r[0],
+                "summary": r[1],
+                "start": {"dateTime": f"{r[2]}T{r[3]}:00"},
+                "end": {"dateTime": f"{r[2]}T{r[4]}:00"},
+            })
+
+        return events
+
+    except Exception as e:
+        print("Error fetching all events:", e)
+        return []

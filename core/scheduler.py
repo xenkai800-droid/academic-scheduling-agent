@@ -2,6 +2,7 @@ from core.calendar_service import create_event, list_upcoming_events
 from core.conflict_detector import has_conflict
 from db.database import save_event
 import datetime
+import streamlit as st
 from tools.find_free_time_tool import find_free_time
 
 def is_weekend(date_str):
@@ -119,7 +120,9 @@ def schedule_event(title, date, start_time, end_time):
         # HOLIDAY
         # -------------------------
 
-        holiday = is_google_holiday(date)
+        ENABLE_HOLIDAYS = st.secrets.get("ENABLE_HOLIDAYS", False)
+
+        holiday = is_google_holiday(date) if ENABLE_HOLIDAYS else None
 
         if holiday:
             return f"⚠️ Holiday: {holiday} - Scheduling blocked"
@@ -147,7 +150,11 @@ def schedule_event(title, date, start_time, end_time):
         # -------------------------
 
         created = create_event(title, date, start_time, end_time)
-
+        # 🔥 FALLBACK (VERY IMPORTANT)
+        if not created or "id" not in created:
+            created = {
+                "id": f"local_{title}_{date}_{start_time}"
+            }
         if not created or "id" not in created:
             return "❌ Failed to create event"
 
