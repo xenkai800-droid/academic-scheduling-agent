@@ -90,7 +90,7 @@ tools = [
         return_direct=True,
     ),
 
-    # 🔥 FIXED ASSIGNMENT TOOL
+   
     StructuredTool.from_function(
         name="add_assignment",
         func=debug_tool(add_assignment_tool),
@@ -223,10 +223,13 @@ def classify_intent(query: str):
 
     ------------------------
     STRICT RULES:
+    - If the user gives a DIRECT command (no question form) → ACTION  
+    (e.g. "create event tomorrow at 2pm", "add assignment due monday")
 
-    - CREATE / ADD / SCHEDULE / FIND / CHECK → ACTION
-    - HOW / HELP / WHY → CHAT
-
+    - If the user is ASKING about an action → CHAT  
+    (e.g. "can you create an event?", "how do i add assignment?", "can you schedule something?")
+        - HOW / HELP / WHY → CHAT
+    - If the sentence ends with a question or is phrased as a question → CHAT
     - Questions about schedule → ACTION:
     • "do i have anything tomorrow"
     • "what is my schedule"

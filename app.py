@@ -117,7 +117,9 @@ if page == "AI Assistant":
         st.success(result)
 
     st.divider()
-
+    # 🔥 MEMORY STATE
+    if "pending_action" not in st.session_state:
+        st.session_state.pending_action = None
     query = st.text_input(
         "Enter your request",
         placeholder="e.g. schedule math exam tomorrow at 10am"
@@ -128,7 +130,17 @@ if page == "AI Assistant":
         if not query.strip():
             st.error("❌ Please enter a request")
         else:
+            # 🔥 HANDLE FOLLOW-UP MEMORY
+            if st.session_state.pending_action == "schedule":
+                query = f"schedule {query}"
+                st.session_state.pending_action = None
+
             response = run_agent(query)
+
+            # 🔥 DETECT FOLLOW-UP QUESTIONS FROM AI
+            if isinstance(response, str):
+                if "what would you like to schedule" in response.lower():
+                    st.session_state.pending_action = "schedule"
 
             st.divider()
 
