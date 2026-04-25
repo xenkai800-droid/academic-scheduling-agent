@@ -20,6 +20,11 @@ def authenticate_google_calendar():
 
     try:
 
+        # ❌ If credentials.json doesn't exist → skip Google completely
+        if not os.path.exists("credentials.json"):
+            print("⚠️ Google Calendar disabled (no credentials.json)")
+            return None
+
         creds = None
 
         if os.path.exists("token.json"):
@@ -43,7 +48,7 @@ def authenticate_google_calendar():
 
     except Exception as e:
         print("GOOGLE AUTH ERROR:", e)
-        raise Exception("Google Calendar authentication failed.")
+        return None
 
 
 # --------------------------------------------------
@@ -55,6 +60,10 @@ def list_upcoming_events():
     try:
 
         service = authenticate_google_calendar()
+
+        # 🚫 If Google not available → return empty (no crash)
+        if not service:
+            return []
 
         now = datetime.datetime.utcnow().isoformat() + "Z"
 
@@ -82,6 +91,10 @@ def create_event(title, date, start_time, end_time):
     try:
 
         service = authenticate_google_calendar()
+
+        # 🚫 If Google not available → skip Google creation
+        if not service:
+            return None
 
         ist = pytz.timezone(TIMEZONE)
 
@@ -113,7 +126,7 @@ def create_event(title, date, start_time, end_time):
 
     except Exception as e:
         print("GOOGLE CREATE EVENT ERROR:", e)
-        raise Exception("Failed to create event.")
+        return None
 
 
 # --------------------------------------------------
@@ -126,12 +139,13 @@ def delete_event(event_id):
 
         service = authenticate_google_calendar()
 
+        if not service:
+            return False
+
         service.events().delete(
             calendarId="primary",
             eventId=event_id,
         ).execute()
-
-        print(f"✅ Deleted event: {event_id}")
 
         return True
 
@@ -143,12 +157,14 @@ def delete_event(event_id):
 # --------------------------------------------------
 # DUPLICATE CHECK
 # --------------------------------------------------
-
 def event_exists_on_date(title, date):
 
     try:
 
         service = authenticate_google_calendar()
+
+        if not service:
+            return False
 
         ist = pytz.timezone(TIMEZONE)
 

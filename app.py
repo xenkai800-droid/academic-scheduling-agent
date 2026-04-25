@@ -2,7 +2,8 @@ import streamlit as st
 import datetime
 import pytz
 import pandas as pd
-
+from db.database import get_events_by_date
+from db.database import get_all_events
 from core.reminder_engine import get_due_assignments
 try:
     from core.email_reminder import send_email_reminders
@@ -153,7 +154,6 @@ if page == "AI Assistant":
                 st.markdown("### 🤖 Result")
                 st.markdown(response)
 
-
 # ==================================================
 # 📊 DASHBOARD
 # ==================================================
@@ -173,19 +173,32 @@ elif page == "Dashboard":
                     st.secrets["USER_EMAIL"]
                 )
             else:
-                st.warning("📧 Email reminders not configured in this environment.")
+                st.warning("📧 Email reminders not configured.")
         except Exception as e:
             st.error(f"❌ Email failed: {str(e)}")
 
     st.divider()
 
-    events = list_upcoming_events()
+    IST = pytz.timezone("Asia/Kolkata")
 
-    if not events:
-        st.info("No upcoming events.")
-    else:
+    # -------------------------
+    # TRY GOOGLE EVENTS
+    # -------------------------
+    try:
+        events = list_upcoming_events()
+    except:
+        events = []
 
-        IST = pytz.timezone("Asia/Kolkata")
+    # -------------------------
+    # GET LOCAL EVENTS
+    # -------------------------
+    local_events = get_all_events()
+
+    # ==================================================
+    # PRIORITY: GOOGLE EVENTS
+    # ==================================================
+    if events:
+
         grouped = {}
 
         for event in events:
@@ -226,70 +239,36 @@ elif page == "Dashboard":
                             delete_local_event(event["id"])
                             st.rerun()
 
+    # ==================================================
+    # FALLBACK: LOCAL EVENTS
+    # ==================================================
+    elif local_events:
+
+        st.warning("⚠️ Showing locally saved events (offline mode)")
+
+        grouped = {}
+
+        for title, date, start, end in local_events:
+            date_obj = datetime.date.fromisoformat(date)
+            grouped.setdefault(date_obj, []).append((title, start, end))
+
+        for date_key in sorted(grouped.keys()):
+
+            st.markdown(f"### 📅 {date_key.strftime('%d %b %Y')}")
+
+            for title, start, end in grouped[date_key]:
+
+                with st.container(border=True):
+
+                    col1, col2 = st.columns([4, 1])
+
+                    with col1:
+                        st.markdown(f"**{title}**  \n🕒 {start} - {end}")
+
+    else:
+        st.info("No upcoming events.")
+
     st.divider()
-
-    st.subheader("📤 Export Schedule")
-
-    if events:
-        from openpyxl import Workbook
-        from openpyxl.utils import get_column_letter
-        from io import BytesIO
-        from datetime import datetime
-
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Schedule"
-
-        # Headers
-        headers = ["Title", "Start", "End", "Type"]
-        ws.append(headers)
-
-        # Format function
-        def format_dt(dt_str):
-            try:
-                dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-                return dt.strftime("%d-%m-%Y %H:%M")
-            except:
-                return dt_str
-
-        # Data
-        for e in events:
-            start = e.get("start", {})
-            end = e.get("end", {})
-
-            start_val = format_dt(start.get("dateTime") or start.get("date", ""))
-            end_val = format_dt(end.get("dateTime") or end.get("date", ""))
-
-            ws.append([
-                e.get("summary"),
-                start_val,
-                end_val,
-                "All Day" if "date" in start else "Timed"
-            ])
-
-        # 🔥 AUTO COLUMN WIDTH
-        for col in ws.columns:
-            max_length = 0
-            col_letter = get_column_letter(col[0].column)
-
-            for cell in col:
-                if cell.value:
-                    max_length = max(max_length, len(str(cell.value)))
-
-            ws.column_dimensions[col_letter].width = max_length + 2
-
-        # Save to memory
-        buffer = BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
-
-        # Download
-        st.download_button(
-            "Download Excel",
-            buffer,
-            file_name="schedule.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
 
 # ==================================================
 # CREATE EVENT
