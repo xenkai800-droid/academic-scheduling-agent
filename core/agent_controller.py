@@ -130,7 +130,7 @@ llm = ChatGroq(
     groq_api_key=st.secrets["GROQ_API_KEY"],
     model_name="llama-3.1-8b-instant",
     temperature=0.2,
-    max_tokens=800,
+    max_tokens=200,
 )
 
 
@@ -314,38 +314,33 @@ def run_agent(query):
         if not query or not query.strip():
             return "❌ Please enter a valid request."
 
-        # 🔥 NEW: INTENT CLASSIFICATION
-        intent = classify_intent(query)
-
-        print("INTENT:", intent)
-
-        # 🔥 CHAT → conversational response
-        if intent == "CHAT":
-            return handle_conversation(query)
-
-        # 🔥 ACTION → normal agent flow (UNCHANGED)
-        result = agent.invoke(
-            {
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": query},
-                ]
-            }
-        )
+        # ✅ SINGLE SAFE AGENT CALL
+        try:
+            result = agent.invoke(
+                {
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": query},
+                    ]
+                }
+            )
+        except Exception as e:
+            print("❌ AGENT ERROR:", e)
+            return "⚠️ AI is temporarily overloaded. Try again in a few seconds."
 
         messages = result.get("messages", [])
 
         print("\n--- FULL MESSAGE TRACE ---")
-
         for msg in messages:
             print(type(msg).__name__, ":", getattr(msg, "content", ""))
-
         print("--- END TRACE ---\n")
 
+        # ✅ TOOL RESPONSE PRIORITY
         for msg in reversed(messages):
             if msg.__class__.__name__ == "ToolMessage" and msg.content:
                 return clean_response(msg.content)
 
+        # ✅ FALLBACK RESPONSE
         for msg in reversed(messages):
             if msg.__class__.__name__ == "AIMessage" and msg.content:
                 return clean_response(msg.content)
