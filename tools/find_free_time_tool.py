@@ -98,11 +98,31 @@ def get_free_time_structured(days=1, period=None, date=None, weekday=None):
         start_day = today
         end_day = today + datetime.timedelta(days=days - 1)
 
-    events = list_upcoming_events()
+    events = []
 
-    if not events:
-        from db.database import get_all_events
-        events = get_all_events()
+    # 🔥 TRY GOOGLE EVENTS
+    try:
+        google_events = list_upcoming_events()
+        if google_events:
+            events.extend(google_events)
+    except:
+        pass
+
+    # 🔥 ADD LOCAL EVENTS (CONVERT TO SAME FORMAT)
+    from db.database import get_all_events
+
+    local_events = get_all_events()
+
+    for title, date, start, end in local_events:
+        events.append({
+            "summary": title,
+            "start": {
+                "dateTime": f"{date}T{start}:00"
+            },
+            "end": {
+                "dateTime": f"{date}T{end}:00"
+            }
+        })
         
     results = {}
 

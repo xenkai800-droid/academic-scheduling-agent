@@ -254,6 +254,10 @@ elif page == "Dashboard":
         grouped = {}
 
         for title, date, start, end in local_events:
+            # 🔥 FIX: normalize date before parsing
+            year, month, day = date.split("-")
+            date = f"{year}-{int(month):02d}-{int(day):02d}"
+
             date_obj = datetime.date.fromisoformat(date)
             grouped.setdefault(date_obj, []).append((title, start, end))
 
@@ -261,7 +265,7 @@ elif page == "Dashboard":
 
             st.markdown(f"### 📅 {date_key.strftime('%d %b %Y')}")
 
-            for title, start, end in grouped[date_key]:
+            for idx, (title, start, end) in enumerate(grouped[date_key]):
 
                 event_id = f"local_{title}_{date_key}_{start}"
 
@@ -273,8 +277,7 @@ elif page == "Dashboard":
                         st.markdown(f"**{title}**  \n🕒 {start} - {end}")
 
                     with col2:
-                        if st.button("🗑", key=f"local_{event_id}"):
-
+                        if st.button("🗑", key=f"local_{idx}_{title}_{date_key}_{start}"):
                             delete_local_event(event_id)
                             st.success("Deleted")
                             st.rerun()
@@ -286,6 +289,88 @@ elif page == "Dashboard":
         st.info("No upcoming events.")
 
     st.divider()
+    # ==================================================
+    # 📤 EXPORT SCHEDULE (FINAL)
+    # ==================================================
+
+    st.subheader("📤 Export Schedule")
+
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+    from io import BytesIO
+    from datetime import datetime
+
+    export_data = []
+
+    def format_dt(dt_str):
+        try:
+            dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
+            return dt.strftime("%d-%m-%Y %H:%M")
+        except:
+            return dt_str
+
+    # GOOGLE EVENTS
+    for e in events or []:
+        start = e.get("start", {})
+        end = e.get("end", {})
+
+        start_val = format_dt(start.get("dateTime") or start.get("date", ""))
+        end_val = format_dt(end.get("dateTime") or end.get("date", ""))
+
+        export_data.append([
+            e.get("summary", "Untitled"),
+            start_val,
+            end_val,
+            "Google"
+        ])
+
+    # LOCAL EVENTS
+    for title, date, start, end in local_events:
+        try:
+            y, m, d = date.split("-")
+            date = f"{y}-{int(m):02d}-{int(d):02d}"
+        except:
+            pass
+
+        export_data.append([
+            title,
+            f"{date} {start}",
+            f"{date} {end}",
+            "Local"
+        ])
+
+    # CREATE EXCEL
+    if export_data:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Schedule"
+
+        ws.append(["Title", "Start", "End", "Type"])
+
+        for row in export_data:
+            ws.append(row)
+
+        for col in ws.columns:
+            max_length = 0
+            col_letter = get_column_letter(col[0].column)
+            for cell in col:
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            ws.column_dimensions[col_letter].width = max_length + 2
+
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        st.download_button(
+            "📥 Download Excel",
+            buffer,
+            file_name="schedule.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+    else:
+        st.info("No data available to export.")
+
 # ==================================================
 # CREATE EVENT
 # ==================================================
