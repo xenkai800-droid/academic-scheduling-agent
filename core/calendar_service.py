@@ -6,7 +6,8 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-
+from google.oauth2 import service_account
+import json
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "Asia/Kolkata"
@@ -15,10 +16,32 @@ TIMEZONE = "Asia/Kolkata"
 # --------------------------------------------------
 # AUTHENTICATION
 # --------------------------------------------------
-
 def authenticate_google_calendar():
-
     try:
+        # ==================================================
+        # 🔥 STREAMLIT MODE (Service Account)
+        # ==================================================
+        try:
+            import streamlit as st
+            import json
+            from google.oauth2 import service_account
+
+            if "GOOGLE_CREDENTIALS" in st.secrets:
+                creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
+
+                creds = service_account.Credentials.from_service_account_info(
+                    creds_dict,
+                    scopes=SCOPES
+                )
+
+                return build("calendar", "v3", credentials=creds)
+
+        except Exception:
+            pass  # fallback to local
+
+        # ==================================================
+        # 💻 LOCAL MODE (Your ORIGINAL code untouched)
+        # ==================================================
 
         # ❌ If credentials.json doesn't exist → skip Google completely
         if not os.path.exists("credentials.json"):
