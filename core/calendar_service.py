@@ -11,7 +11,7 @@ import json
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "Asia/Kolkata"
-CALENDAR_ID ="3c9092805c462e45b2a35f5354130403f35dc0063834de436fbdf03642f68e7e@group.calendar.google.com"
+CALENDAR_ID ="92bfe35950edbfcfb05fc3b36a8b70db8eebf58ba562ade6bf25eced6fa36b1b@group.calendar.google.com"
 
 # --------------------------------------------------
 # AUTHENTICATION
