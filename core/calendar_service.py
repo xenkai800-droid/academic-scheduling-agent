@@ -33,6 +33,9 @@ def authenticate_google_calendar():
                     scopes=SCOPES
                 )
 
+                # 🔥 CRITICAL FIX
+                creds = creds.with_subject("chocolatewrapper25@gmail.com")  # ← YOUR CALENDAR OWNER EMAIL
+
                 return build("calendar", "v3", credentials=creds)
 
         except Exception as e:
