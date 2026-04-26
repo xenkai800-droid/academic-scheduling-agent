@@ -11,7 +11,7 @@ import json
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "Asia/Kolkata"
-CALENDAR_ID ="92bfe35950edbfcfb05fc3b36a8b70db8eebf58ba562ade6bf25eced6fa36b1b@group.calendar.google.com"
+CALENDAR_ID ="7529aecbe01c506eea7676b720e45b418be2b4e7f07192721b1301a3ff59c6a7@group.calendar.google.com"
 
 # --------------------------------------------------
 # AUTHENTICATION
@@ -144,7 +144,7 @@ def create_event(title, date, start_time, end_time):
 
         try:
             created_event = service.events().insert(
-                calendarId="primary",
+                calendarId=CALENDAR_ID,
                 body=event
             ).execute()
 
