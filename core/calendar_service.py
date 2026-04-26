@@ -1,127 +1,62 @@
 import os
 import datetime
 import pytz
+import json
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
-import json
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "Asia/Kolkata"
-CALENDAR_ID ="7529aecbe01c506eea7676b720e45b418be2b4e7f07192721b1301a3ff59c6a7@group.calendar.google.com"
+
 
 # --------------------------------------------------
-# AUTHENTICATION
+# AUTH (STREAMLIT ONLY — NO LOCAL FALLBACK)
 # --------------------------------------------------
+
 def authenticate_google_calendar():
     try:
-        # ==================================================
-        # 🔥 STREAMLIT MODE (Service Account)
-        # ==================================================
-        try:
-            import streamlit as st
-            
+        import streamlit as st
 
-            if "GOOGLE_CREDENTIALS" in st.secrets:
-                creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
-
-                creds = service_account.Credentials.from_service_account_info(
-                    creds_dict,
-                    scopes=SCOPES
-                )
-
-                # 🔥 CRITICAL FIX
-                creds = creds.with_subject("chocolatewrapper25@gmail.com")  # ← YOUR CALENDAR OWNER EMAIL
-
-                return build("calendar", "v3", credentials=creds)
-
-        except Exception as e:
-            print("Service account fallback triggered:", e)
-
-        # ==================================================
-        # 💻 LOCAL MODE (Your ORIGINAL code untouched)
-        # ==================================================
-
-        # ❌ If credentials.json doesn't exist → skip Google completely
-        if not os.path.exists("credentials.json"):
-            print("⚠️ Google Calendar disabled (no credentials.json)")
+        if "GOOGLE_CREDENTIALS" not in st.secrets:
+            print("❌ GOOGLE_CREDENTIALS missing in secrets")
             return None
 
-        creds = None
+        creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
 
-        if os.path.exists("token.json"):
-            creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+        creds = service_account.Credentials.from_service_account_info(
+            creds_dict,
+            scopes=SCOPES
+        )
 
-        if not creds or not creds.valid:
+        # 🔥 REQUIRED: act as real user
+        creds = creds.with_subject("chocolatewrapper25@gmail.com")
 
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
+        service = build("calendar", "v3", credentials=creds)
 
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "credentials.json", SCOPES
-                )
-                creds = flow.run_local_server(port=0)
+        print("✅ Google service initialized")
 
-            with open("token.json", "w") as token:
-                token.write(creds.to_json())
-
-        return build("calendar", "v3", credentials=creds)
+        return service
 
     except Exception as e:
-        print("GOOGLE AUTH ERROR:", e)
+        print("❌ AUTH ERROR:", repr(e))
         return None
 
 
 # --------------------------------------------------
-# LIST EVENTS (🔥 FIXED: NO CACHE)
-# --------------------------------------------------
-
-def list_upcoming_events():
-
-    try:
-
-        service = authenticate_google_calendar()
-
-        # 🚫 If Google not available → return empty (no crash)
-        if not service:
-            return []
-
-        IST = pytz.timezone(TIMEZONE)
-
-        now = datetime.datetime.now(IST).astimezone(pytz.utc).isoformat()
-        print("📅 TESTING CALENDAR ACCESS:", "primary")
-        events_result = service.events().list(
-            calendarId="primary",
-            timeMin=now,
-            maxResults=100,
-            singleEvents=True,
-            orderBy="startTime",
-        ).execute()
-
-        return events_result.get("items", [])
-
-    except Exception as e:
-        print("LIST EVENTS ERROR:", e)
-        return []
-
-
-# --------------------------------------------------
-# CREATE EVENT
+# CREATE EVENT (FINAL)
 # --------------------------------------------------
 
 def create_event(title, date, start_time, end_time):
 
     try:
 
+        print("\n🚀 CREATE EVENT STARTED")
+
         service = authenticate_google_calendar()
 
-        # 🚫 If Google not available → skip Google creation
         if not service:
-            return None
+            return "ERROR: Google service not initialized"
 
         ist = pytz.timezone(TIMEZONE)
 
@@ -146,41 +81,60 @@ def create_event(title, date, start_time, end_time):
         }
 
         try:
-            print("🚀 TRYING INSERT")
-            print("📅 Calendar ID:", "primary")
-            print("📌 Event Data:", event)
+            print("📤 INSERTING EVENT INTO GOOGLE")
 
-            try:
-                created_event = service.events().insert(
-                    calendarId="primary",
-                    body=event
-                ).execute()
+            created_event = service.events().insert(
+                calendarId="primary",
+                body=event
+            ).execute()
 
-                print("✅ SUCCESS:", created_event)
-                return created_event
-
-            except Exception as e:
-                print("❌ FULL GOOGLE ERROR:", repr(e))
-                return None
-
-            print("✅ GOOGLE EVENT CREATED:", created_event)
-
-            if not created_event or "id" not in created_event:
-                raise Exception("Invalid response from Google")
+            print("✅ SUCCESS:", created_event)
 
             return created_event
 
         except Exception as e:
-            print("❌ GOOGLE INSERT FAILED:", e)
-            raise e
+            print("❌ INSERT ERROR:", repr(e))
+            return f"ERROR: {repr(e)}"
 
     except Exception as e:
-        print("GOOGLE CREATE EVENT ERROR:", e)
-        return None
+        print("❌ CREATE EVENT ERROR:", repr(e))
+        return f"ERROR: {repr(e)}"
 
 
 # --------------------------------------------------
-# DELETE EVENT (🔥 IMPROVED)
+# LIST EVENTS (SAFE)
+# --------------------------------------------------
+
+def list_upcoming_events():
+
+    try:
+
+        service = authenticate_google_calendar()
+
+        if not service:
+            return []
+
+        IST = pytz.timezone(TIMEZONE)
+
+        now = datetime.datetime.now(IST).astimezone(pytz.utc).isoformat()
+
+        events_result = service.events().list(
+            calendarId="primary",
+            timeMin=now,
+            maxResults=50,
+            singleEvents=True,
+            orderBy="startTime",
+        ).execute()
+
+        return events_result.get("items", [])
+
+    except Exception as e:
+        print("❌ LIST ERROR:", repr(e))
+        return []
+
+
+# --------------------------------------------------
+# DELETE EVENT
 # --------------------------------------------------
 
 def delete_event(event_id):
@@ -200,45 +154,5 @@ def delete_event(event_id):
         return True
 
     except Exception as e:
-        print("❌ DELETE EVENT ERROR:", e)
-        return False
-
-
-# --------------------------------------------------
-# DUPLICATE CHECK
-# --------------------------------------------------
-def event_exists_on_date(title, date):
-
-    try:
-
-        service = authenticate_google_calendar()
-
-        if not service:
-            return False
-
-        ist = pytz.timezone(TIMEZONE)
-
-        start_dt = ist.localize(
-            datetime.datetime.strptime(date + " 00:00", "%Y-%m-%d %H:%M")
-        )
-
-        end_dt = ist.localize(
-            datetime.datetime.strptime(date + " 23:59", "%Y-%m-%d %H:%M")
-        )
-
-        events_result = service.events().list(
-            calendarId="primary",
-            timeMin=start_dt.isoformat(),
-            timeMax=end_dt.isoformat(),
-            singleEvents=True,
-        ).execute()
-
-        for event in events_result.get("items", []):
-            if event.get("summary", "").strip().lower() == title.strip().lower():
-                return True
-
-        return False
-
-    except Exception as e:
-        print("DUPLICATE CHECK ERROR:", e)
+        print("❌ DELETE ERROR:", repr(e))
         return False
