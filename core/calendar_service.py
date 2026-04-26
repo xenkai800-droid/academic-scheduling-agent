@@ -65,7 +65,9 @@ def list_upcoming_events():
         if not service:
             return []
 
-        now = datetime.datetime.utcnow().isoformat() + "Z"
+        IST = pytz.timezone(TIMEZONE)
+
+        now = datetime.datetime.now(IST).astimezone(pytz.utc).isoformat()
 
         events_result = service.events().list(
             calendarId="primary",
