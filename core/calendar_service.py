@@ -143,10 +143,22 @@ def create_event(title, date, start_time, end_time):
         }
 
         try:
-            created_event = service.events().insert(
-                calendarId=CALENDAR_ID,
-                body=event
-            ).execute()
+            print("🚀 TRYING INSERT")
+            print("📅 Calendar ID:", CALENDAR_ID)
+            print("📌 Event Data:", event)
+
+            try:
+                created_event = service.events().insert(
+                    calendarId=CALENDAR_ID,
+                    body=event
+                ).execute()
+
+                print("✅ SUCCESS:", created_event)
+                return created_event
+
+            except Exception as e:
+                print("❌ FULL GOOGLE ERROR:", repr(e))
+                return None
 
             print("✅ GOOGLE EVENT CREATED:", created_event)
 
