@@ -5,12 +5,14 @@ import datetime
 import streamlit as st
 from tools.find_free_time_tool import find_free_time
 
+
 def is_weekend(date_str):
     try:
         date = datetime.date.fromisoformat(date_str)
-        return date.weekday() >= 5  # 5 = Saturday, 6 = Sunday
+        return date.weekday() >= 5
     except Exception:
         return False
+
 
 # -----------------------------------
 # SEMESTER BREAKS
@@ -22,7 +24,6 @@ SEMESTER_BREAKS = [
 
 
 def is_semester_break(date_str):
-
     try:
         date = datetime.date.fromisoformat(date_str)
 
@@ -44,13 +45,10 @@ def is_semester_break(date_str):
 # -----------------------------------
 
 def is_google_holiday(date_str):
-
     try:
-
         events = list_upcoming_events()
 
         for event in events:
-
             start = event.get("start", {})
             title = event.get("summary", "").lower()
 
@@ -76,7 +74,7 @@ def is_google_holiday(date_str):
 
 
 # -----------------------------------
-# MAIN SCHEDULER
+# MAIN SCHEDULER (HYBRID FIXED)
 # -----------------------------------
 
 def schedule_event(title, date, start_time, end_time):
@@ -108,16 +106,16 @@ def schedule_event(title, date, start_time, end_time):
 
         if is_semester_break(date):
             return "⚠️ Semester Break - Scheduling blocked"
-        
+
         # -------------------------
         # WEEKEND CHECK
         # -------------------------
 
         if is_weekend(date):
-            weekend_warning = "⚠️ Note: This is a weekend.\n\n" 
+            weekend_warning = "⚠️ Note: This is a weekend.\n\n"
         else:
             weekend_warning = ""
-        
+
         # -------------------------
         # HOLIDAY
         # -------------------------
@@ -130,7 +128,7 @@ def schedule_event(title, date, start_time, end_time):
             return f"⚠️ Holiday: {holiday} - Scheduling blocked"
 
         # -------------------------
-        # 🔥 FIXED CONFLICT CHECK
+        # CONFLICT CHECK
         # -------------------------
 
         conflict_data = has_conflict(date, start_time, end_time)
@@ -138,7 +136,6 @@ def schedule_event(title, date, start_time, end_time):
         if conflict_data.get("conflict"):
 
             event_name = conflict_data.get("event_name", "Existing Event")
-
             suggestion = find_free_time(date=date)
 
             return (
@@ -147,40 +144,45 @@ def schedule_event(title, date, start_time, end_time):
                 f"💡 Suggested Free Slots:\n\n{suggestion}"
             )
 
-
         # -------------------------
-        # CREATE EVENT (HYBRID MODE)
+        # 🔥 HYBRID EVENT CREATION
         # -------------------------
 
         event_id = None
+        google_success = False
 
         try:
             created = create_event(title, date, start_time, end_time)
 
-            # 🔥 show real error if returned
-            if isinstance(created, str):
-                return f"❌ Google Calendar error:\n\n{created}"
-
-            if not created:
-                return "❌ Google Calendar error: No response from Google"
-
-            if "id" not in created:
-                return f"❌ Google error: Invalid response\n\n{created}"
-
-            event_id = created["id"]
+            if isinstance(created, dict) and "id" in created:
+                event_id = created["id"]
+                google_success = True
 
         except Exception as e:
-            return f"❌ Google Calendar exception:\n\n{str(e)}"
+            print("⚠️ Google failed:", e)
 
-        # ✅ ONLY SAVE if Google succeeded
+        # -------------------------
+        # 🔥 ALWAYS SAVE LOCALLY
+        # -------------------------
+
+        if not event_id:
+            event_id = f"local_{title}_{date}_{start_time}"
+
         save_event(event_id, title, date, start_time, end_time)
+
+        # -------------------------
+        # RESPONSE
+        # -------------------------
 
         return (
             weekend_warning +
-            "✅ Event Created Successfully\n\n"
+            "✅ Event Created\n\n"
             f"📌 {title}\n"
             f"📅 {date}\n"
-            f"🕒 {start_time} - {end_time}"
+            f"🕒 {start_time} - {end_time}\n\n"
+            + ("🌐 Synced to Google Calendar"
+               if google_success
+               else "💾 Saved locally (Google unavailable)")
         )
 
     except Exception as e:
