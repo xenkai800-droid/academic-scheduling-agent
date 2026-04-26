@@ -31,7 +31,7 @@ def authenticate_google_calendar():
                 creds = service_account.Credentials.from_service_account_info(
                     creds_dict,
                     scopes=SCOPES
-                )
+                ).with_subject(creds_dict["client_email"])
 
                 return build("calendar", "v3", credentials=creds)
 
@@ -142,11 +142,14 @@ def create_event(title, date, start_time, end_time):
             },
         }
 
-        return (
-            service.events()
-            .insert(calendarId=CALENDAR_ID, body=event)
-            .execute()
-        )
+        created_event = service.events().insert(
+            calendarId=CALENDAR_ID,
+            body=event
+        ).execute()
+
+        print("GOOGLE EVENT CREATED:", created_event)
+
+        return created_event
 
     except Exception as e:
         print("GOOGLE CREATE EVENT ERROR:", e)
