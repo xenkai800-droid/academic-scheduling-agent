@@ -93,9 +93,9 @@ def list_upcoming_events():
         IST = pytz.timezone(TIMEZONE)
 
         now = datetime.datetime.now(IST).astimezone(pytz.utc).isoformat()
-        print("📅 TESTING CALENDAR ACCESS:", CALENDAR_ID)
+        print("📅 TESTING CALENDAR ACCESS:", "primary")
         events_result = service.events().list(
-            calendarId=CALENDAR_ID,
+            calendarId="primary",
             timeMin=now,
             maxResults=100,
             singleEvents=True,
@@ -147,12 +147,12 @@ def create_event(title, date, start_time, end_time):
 
         try:
             print("🚀 TRYING INSERT")
-            print("📅 Calendar ID:", CALENDAR_ID)
+            print("📅 Calendar ID:", "primary")
             print("📌 Event Data:", event)
 
             try:
                 created_event = service.events().insert(
-                    calendarId=CALENDAR_ID,
+                    calendarId="primary",
                     body=event
                 ).execute()
 
@@ -193,7 +193,7 @@ def delete_event(event_id):
             return False
 
         service.events().delete(
-            calendarId=CALENDAR_ID,
+            calendarId="primary",
             eventId=event_id,
         ).execute()
 
@@ -227,7 +227,7 @@ def event_exists_on_date(title, date):
         )
 
         events_result = service.events().list(
-            calendarId=CALENDAR_ID,
+            calendarId="primary",
             timeMin=start_dt.isoformat(),
             timeMax=end_dt.isoformat(),
             singleEvents=True,
