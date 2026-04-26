@@ -5,7 +5,6 @@ from pydantic import BaseModel, Field
 import streamlit as st
 import traceback
 
-
 # ---------------- IMPORT TOOLS ----------------
 
 from tools.daily_planner_tool import daily_planner_tool
