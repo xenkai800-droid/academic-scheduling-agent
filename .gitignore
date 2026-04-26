@@ -211,3 +211,4 @@ scheduler.db
 venv/
 
 .streamlit/secrets.toml
+*.db
