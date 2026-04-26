@@ -90,7 +90,7 @@ def list_upcoming_events():
         IST = pytz.timezone(TIMEZONE)
 
         now = datetime.datetime.now(IST).astimezone(pytz.utc).isoformat()
-
+        print("📅 TESTING CALENDAR ACCESS:", CALENDAR_ID)
         events_result = service.events().list(
             calendarId=CALENDAR_ID,
             timeMin=now,
