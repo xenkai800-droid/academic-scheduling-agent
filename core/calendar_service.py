@@ -144,7 +144,7 @@ def create_event(title, date, start_time, end_time):
 
         try:
             created_event = service.events().insert(
-                calendarId=CALENDAR_ID,
+                calendarId="primary",
                 body=event
             ).execute()
 
