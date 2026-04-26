@@ -157,15 +157,18 @@ def schedule_event(title, date, start_time, end_time):
         try:
             created = create_event(title, date, start_time, end_time)
 
-            if created and "id" in created:
-                event_id = created["id"]
+            if not created:
+                return "❌ Google Calendar error: Event not created"
 
-        except Exception:
-            pass
+            if "id" not in created:
+                return f"❌ Google error: Invalid response {created}"
 
-        if not event_id:
-            event_id = f"local_{title}_{date}_{start_time}"
+            event_id = created["id"]
 
+        except Exception as e:
+            return f"❌ Google Calendar error: {str(e)}"
+
+        # ✅ ONLY SAVE if Google succeeded
         save_event(event_id, title, date, start_time, end_time)
 
         return (
