@@ -11,7 +11,7 @@ import json
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 TIMEZONE = "Asia/Kolkata"
-
+CALENDAR_ID ="3c9092805c462e45b2a35f5354130403f35dc0063834de436fbdf03642f68e7e@group.calendar.google.com"
 
 # --------------------------------------------------
 # AUTHENTICATION
@@ -23,8 +23,7 @@ def authenticate_google_calendar():
         # ==================================================
         try:
             import streamlit as st
-            import json
-            from google.oauth2 import service_account
+            
 
             if "GOOGLE_CREDENTIALS" in st.secrets:
                 creds_dict = json.loads(st.secrets["GOOGLE_CREDENTIALS"])
@@ -37,7 +36,7 @@ def authenticate_google_calendar():
                 return build("calendar", "v3", credentials=creds)
 
         except Exception:
-            pass  # fallback to local
+            print("Service account fallback triggered:", e)
 
         # ==================================================
         # 💻 LOCAL MODE (Your ORIGINAL code untouched)
@@ -93,7 +92,7 @@ def list_upcoming_events():
         now = datetime.datetime.now(IST).astimezone(pytz.utc).isoformat()
 
         events_result = service.events().list(
-            calendarId="primary",
+            calendarId=CALENDAR_ID,
             timeMin=now,
             maxResults=100,
             singleEvents=True,
@@ -145,7 +144,7 @@ def create_event(title, date, start_time, end_time):
 
         return (
             service.events()
-            .insert(calendarId="primary", body=event)
+            .insert(calendarId=CALENDAR_ID, body=event)
             .execute()
         )
 
@@ -168,7 +167,7 @@ def delete_event(event_id):
             return False
 
         service.events().delete(
-            calendarId="primary",
+            calendarId=CALENDAR_ID,
             eventId=event_id,
         ).execute()
 
@@ -202,7 +201,7 @@ def event_exists_on_date(title, date):
         )
 
         events_result = service.events().list(
-            calendarId="primary",
+            calendarId=CALENDAR_ID,
             timeMin=start_dt.isoformat(),
             timeMax=end_dt.isoformat(),
             singleEvents=True,
